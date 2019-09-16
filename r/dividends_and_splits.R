@@ -55,15 +55,26 @@ dividends <- tq_get(tickers_vec,
             dividend_ex = dividends) %>% 
   bind_rows(dividends_merged_ticker)
 
-# combine ####
+# save ####
 
-splits_and_dividends <- bind_rows(splits, dividends)
+## splits ####
 
-splits_and_dividends_old <- read_rds(str_c(in_dir, "/splits_and_dividends.rds"))
+splits_old <- read_rds(str_c(in_dir, "/splits.rds"))
 
-splits_and_dividends_new <- splits_and_dividends %>% 
-  anti_join(splits_and_dividends_old, by = c("transaction_type", "transaction_date", "ticker"))
+splits_new <- splits %>% 
+  anti_join(splits_old, by = c("transaction_type", "transaction_date", "ticker"))
 
-splits_and_dividends_to_save <- bind_rows(splits_and_dividends_old, splits_and_dividends_new)
+splits_to_save <- bind_rows(splits_old, splits_new)
 
-write_rds(splits_and_dividends_to_save, str_c(in_dir, "/splits_and_dividends.rds"))
+write_rds(splits_to_save, str_c(in_dir, "/splits.rds"))
+
+## dividends ####
+
+dividends_old <- read_rds(str_c(in_dir, "/dividends.rds"))
+
+dividends_new <- dividends %>% 
+  anti_join(dividends_old, by = c("transaction_type", "transaction_date", "ticker"))
+
+dividends_to_save <- bind_rows(dividends_old, dividends_new)
+
+write_rds(dividends_to_save, str_c(in_dir, "/dividends.rds"))
