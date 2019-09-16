@@ -38,11 +38,12 @@ nordnet_transactions <- nordnet_transactions_raw %>%
             transaction_price = double_clean_nordnet(Kurssi),
             transaction_currency = Valuutta,
             transaction_exchange_rate = double_clean_nordnet(Valuuttakurssi),
-            fee = double_clean_nordnet(Maksut),
+            transaction_fee_local = double_clean_nordnet(Maksut),
+            transaction_fee_eur = transaction_fee_local*transaction_exchange_rate,
             transaction_amount_local = case_when(
               transaction_type %in% c("buy", "sell") ~
-                (-1L)*(quantity*transaction_price + fee),
-              TRUE ~ quantity*transaction_price - fee),
+                (-1L)*(quantity*transaction_price + transaction_fee_local),
+              TRUE ~ quantity*transaction_price - transaction_fee_local),
             transaction_amount_eur = transaction_amount_local*transaction_exchange_rate) %>% 
   filter(transaction_type %in% c("buy", "sell") == T) %>% 
   select(-transaction_amount_raw)
@@ -73,8 +74,9 @@ nordea_transactions <- nordea_transactions_raw %>%
             transaction_price = double_clean_nordea(Kurssi),
             transaction_currency = Valuutta...11,
             transaction_exchange_rate = double_clean_nordea(Valuuttakurssi),
-            fee = double_clean_nordea(Palkkio) %>% 
+            transaction_fee_eur = double_clean_nordea(Palkkio) %>% 
               replace_na(0L),
+            transaction_fee_local = transaction_fee_eur/transaction_exchange_rate,
             transaction_amount_raw = case_when(
               transaction_type == "buy" ~ 
                 (-1L)*`Transaction amount(Settled)(label.transactiontotalforeign)` %>% 
@@ -83,8 +85,8 @@ nordea_transactions <- nordea_transactions_raw %>%
                 double_clean_nordea()),
             transaction_amount_local =  case_when(
               transaction_type == "buy" ~
-                (-1L)*(quantity*transaction_price + fee/transaction_exchange_rate),
-              TRUE ~ quantity*transaction_price - fee/transaction_exchange_rate),
+                (-1L)*(quantity*transaction_price + transaction_fee_local),
+              TRUE ~ quantity*transaction_price - transaction_fee_local),
             transaction_amount_eur = transaction_amount_local*transaction_exchange_rate) %>% 
   select(-transaction_amount_raw)
 
