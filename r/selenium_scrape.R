@@ -2,6 +2,7 @@ library(RSelenium)
 library(XML)
 library(fs)
 library(tidyverse)
+library(lubridate)
 
 in_dir <- readLines("in_dir.txt")
 selenium_ticker_url <- readLines("selenium_ticker_url.txt")
