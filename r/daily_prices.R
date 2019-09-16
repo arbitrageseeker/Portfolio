@@ -16,7 +16,7 @@ currencies_raw <- tq_get(c("ECB/EURUSD", "ECB/EURGBP"),
                          to = Sys.Date())
 
 currencies <- currencies_raw %>% 
-  transmute(transaction_date = date,
+  transmute(date,
             currency = case_when(
               str_remove_all(symbol, "ECB/EUR") == "GBP" ~ "GBX",
               TRUE ~ str_remove_all(symbol, "ECB/EUR")),
@@ -27,7 +27,7 @@ currencies <- currencies_raw %>%
 currencies_old <- read_rds(str_c(in_dir, "/currencies.rds"))
 
 currencies_new <- currencies %>% 
-  anti_join(currencies_old, by = c("transaction_date", "currency"))
+  anti_join(currencies_old, by = c("date", "currency"))
 
 currencies_to_save <- bind_rows(currencies_old, currencies_new)
 
@@ -46,8 +46,8 @@ tickers_vec <- transactions %>%
   pluck("ticker")
 
 min_date <- transactions %>% 
-  filter(transaction_date == min(transaction_date)) %>% 
-  pluck("transaction_date")
+  filter(date == min(date)) %>% 
+  pluck("date")
 
 selenium_ticker <- read_rds(str_c(in_dir, "/", selenium_ticker_name, ".rds"))
 
@@ -55,7 +55,7 @@ reynolds_prices <- tq_get(str_c("WIKI/", merged_ticker_name),
                           get = "quandl",
                           from = min_date,
                           to = Sys.Date()) %>% 
-  transmute(transaction_date = date,
+  transmute(date,
             ticker = merged_ticker_name,
             closing_price = close)
 
@@ -63,7 +63,7 @@ stock_prices <- tq_get(tickers_vec,
                        get = "stock.prices",
                        from = min_date,
                        to = Sys.Date()) %>% 
-  transmute(transaction_date = date,
+  transmute(date,
             ticker = symbol,
             closing_price = close) %>% 
   bind_rows(selenium_ticker) %>% 
@@ -85,7 +85,7 @@ seligson <- tibble(fund = fund_urls) %>%
                                                  locale = locale(decimal_mark = ","),
                                                  col_types = cols(.default = "c")))) %>% 
   unnest() %>% 
-  transmute(transaction_date = dmy(X1),
+  transmute(date = dmy(X1),
             ticker = str_extract(fund, "(?<=graafit\\/).*(?=_)"),
             closing_price = parse_double(str_replace_all(X2, "\\,", "\\.")))
 
@@ -97,7 +97,7 @@ stock_and_fund_prices <- bind_rows(stock_prices, seligson)
 stock_and_fund_prices_old <- read_rds(str_c(in_dir, "/stock_and_fund_prices.rds"))
 
 stock_and_fund_prices_new <- stock_and_fund_prices %>% 
-  anti_join(stock_and_fund_prices_old, by = c("transaction_date", "ticker"))
+  anti_join(stock_and_fund_prices_old, by = c("date", "ticker"))
 
 stock_and_fund_prices_to_save <- bind_rows(stock_and_fund_prices_old, stock_and_fund_prices_new)
 
