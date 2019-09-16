@@ -123,7 +123,19 @@ transactions <- transactions_raw %>%
                             TRUE ~ ticker_raw)) %>% 
   left_join(map_tickers, by = c("ticker_raw" = "orig")) %>% 
   mutate(ticker = if_else(is.na(correct)==T, ticker, correct)) %>% 
-  select(-correct, -ticker_raw)
+  select(-correct, -ticker_raw) %>% 
+  group_by(transaction_date, ticker) %>% 
+  summarise(financial_institution = last(financial_institution),
+            transaction_type = last(transaction_type),
+            transaction_price = weighted.mean(transaction_price, quantity),
+            quantity = sum(quantity),
+            transaction_currency = last(transaction_currency),
+            transaction_exchange_rate = last(transaction_exchange_rate),
+            transaction_fee_local = sum(transaction_fee_local),
+            transaction_fee_eur = sum(transaction_fee_eur),
+            transaction_amount_local = sum(transaction_amount_local),
+            transaction_amount_eur = sum(transaction_amount_eur)) %>% 
+  ungroup()
 
 transactions_old <- read_rds(str_c(in_dir, "/transactions.rds"))
 
@@ -133,4 +145,4 @@ transactions_new <- transactions %>%
 
 transactions_to_save <- bind_rows(transactions_old, transactions_new)
 
-write_rds(transactions_to_save, str_c(in_dir, "/transactions.rds"), )
+write_rds(transactions_to_save, str_c(in_dir, "/transactions.rds"))
