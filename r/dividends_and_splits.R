@@ -10,17 +10,23 @@ merged_ticker_name <- readLines("merged_ticker_name.txt")
 
 # tickers from transactions data ####
 
-tickers_vec <- read_rds(str_c(in_dir, "/transactions.rds")) %>% 
+transactions <- read_rds(str_c(in_dir, "/transactions.rds")) 
+
+tickers_vec <- transactions %>% 
   filter(financial_institution != "Seligson") %>% 
   distinct(ticker) %>% 
   filter(!ticker %in% c(merged_ticker_name, str_c(selenium_ticker_name, ".HE"))) %>% 
   pluck("ticker")
 
+min_date <- transactions %>% 
+  filter(transaction_date == min(transaction_date)) %>% 
+  pluck("transaction_date")
+
 # splits ####
 
 splits <- tq_get(tickers_vec,
                  get = "splits",
-                 from = "2013-06-07",
+                 from = min_date,
                  to = Sys.Date()) %>% 
   transmute(transaction_type = "split",
             transaction_date = date,
@@ -31,7 +37,7 @@ splits <- tq_get(tickers_vec,
 
 dividends_merged_ticker <- tq_get(str_c("WIKI/", merged_ticker_name),
                              get = "quandl",
-                             from = "2013-06-07",
+                             from = min_date,
                              to = Sys.Date()) %>%
   transmute(transaction_type = "dividend",
             transaction_date = date,
@@ -41,7 +47,7 @@ dividends_merged_ticker <- tq_get(str_c("WIKI/", merged_ticker_name),
 
 dividends <- tq_get(tickers_vec,
                     get = "dividends",
-                    from = "2013-06-07",
+                    from = min_date,
                     to = Sys.Date()) %>% 
   transmute(transaction_type = "dividend",
             transaction_date = date,

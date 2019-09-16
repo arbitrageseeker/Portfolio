@@ -12,7 +12,7 @@ merged_ticker_name <- readLines("merged_ticker_name.txt")
 
 currencies_raw <- tq_get(c("ECB/EURUSD", "ECB/EURGBP"),
                          get = "quandl",
-                         from = "2013-06-07",
+                         from = min_date,
                          to = Sys.Date())
 
 currencies <- currencies_raw %>% 
@@ -37,19 +37,23 @@ write_rds(currencies_to_save, str_c(in_dir, "/currencies.rds"))
 
 ## stock prices ####
 
-tickers <- read_rds(str_c(in_dir, "/transactions.rds"))
+transactions <- read_rds(str_c(in_dir, "/transactions.rds"))
 
-tickers_vec <- tickers %>% 
+tickers_vec <- transactions %>% 
   filter(financial_institution != "Seligson") %>% 
   distinct(ticker) %>% 
   filter(!ticker %in% c(merged_ticker_name, str_c(selenium_ticker_name, ".HE"))) %>% 
   pluck("ticker")
 
+min_date <- transactions %>% 
+  filter(transaction_date == min(transaction_date)) %>% 
+  pluck("transaction_date")
+
 selenium_ticker <- read_rds(str_c(in_dir, "/", selenium_ticker_name, ".rds"))
 
 reynolds_prices <- tq_get(str_c("WIKI/", merged_ticker_name),
                           get = "quandl",
-                          from = "2013-06-07",
+                          from = min_date,
                           to = Sys.Date()) %>% 
   transmute(transaction_date = date,
             ticker = merged_ticker_name,
@@ -57,7 +61,7 @@ reynolds_prices <- tq_get(str_c("WIKI/", merged_ticker_name),
 
 stock_prices <- tq_get(tickers_vec,
                        get = "stock.prices",
-                       from = "2013-06-07",
+                       from = min_date,
                        to = Sys.Date()) %>% 
   transmute(transaction_date = date,
             ticker = symbol,
