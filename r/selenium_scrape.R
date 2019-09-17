@@ -106,11 +106,11 @@ old_file <- read_delim(old_file_string$value,
                   locale = locale(decimal_mark = ",",
                                   encoding = "UTF-8"),
                   col_types = cols(.default = "c")) %>% 
-  transmute(transaction_date = ymd(Date),
+  transmute(date = ymd(Date),
             ticker = str_c(selenium_ticker_name, ".HE"),
             closing_price = parse_double(str_replace_all(`Closing price`, "\\,", "\\."))) %>% 
-  filter(transaction_date >= "2013-06-07") %>% 
-  arrange(transaction_date)
+  filter(date >= "2013-06-07") %>% 
+  arrange(date)
 
 new_file_string <- files %>% 
   filter(date == max(date) & order_number == max(order_number))
@@ -121,11 +121,11 @@ new_file <- read_delim(new_file_string$value,
                        locale = locale(decimal_mark = ",",
                                        encoding = "UTF-8"),
                        col_types = cols(.default = "c")) %>% 
-  transmute(transaction_date = ymd(Date),
+  transmute(date = ymd(Date),
             ticker = str_c(selenium_ticker_name, ".HE"),
             closing_price = parse_double(str_replace_all(`Closing price`, "\\,", "\\."))) %>% 
-  filter(transaction_date > max(old_file$transaction_date)) %>% 
-  arrange(transaction_date)
+  filter(date > max(old_file$date)) %>% 
+  arrange(date)
 
 file_to_save <- bind_rows(old_file, new_file)
 

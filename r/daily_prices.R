@@ -8,6 +8,18 @@ quandl_api_key(readLines("quandl_api_key.txt"))
 selenium_ticker_name <- readLines("selenium_ticker_name.txt")
 merged_ticker_name <- readLines("merged_ticker_name.txt")
 
+transactions <- read_rds(str_c(in_dir, "/transactions.rds"))
+
+tickers_vec <- transactions %>% 
+  filter(financial_institution != "Seligson") %>% 
+  distinct(ticker) %>% 
+  filter(!ticker %in% c(merged_ticker_name, str_c(selenium_ticker_name, ".HE"))) %>% 
+  pluck("ticker")
+
+min_date <- transactions %>% 
+  filter(transaction_date == min(transaction_date)) %>% 
+  pluck("transaction_date")
+
 # processing currency data ####
 
 currencies_raw <- tq_get(c("ECB/EURUSD", "ECB/EURGBP"),
@@ -37,18 +49,6 @@ write_rds(currencies_to_save, str_c(in_dir, "/currencies.rds"))
 
 ## stock prices ####
 
-transactions <- read_rds(str_c(in_dir, "/transactions.rds"))
-
-tickers_vec <- transactions %>% 
-  filter(financial_institution != "Seligson") %>% 
-  distinct(ticker) %>% 
-  filter(!ticker %in% c(merged_ticker_name, str_c(selenium_ticker_name, ".HE"))) %>% 
-  pluck("ticker")
-
-min_date <- transactions %>% 
-  filter(date == min(date)) %>% 
-  pluck("date")
-
 selenium_ticker <- read_rds(str_c(in_dir, "/", selenium_ticker_name, ".rds"))
 
 reynolds_prices <- tq_get(str_c("WIKI/", merged_ticker_name),
@@ -71,7 +71,7 @@ stock_prices <- tq_get(tickers_vec,
 
 ## fund prices ####
 
-tickers_seligson <- tickers %>% 
+tickers_seligson <- transactions %>% 
   filter(financial_institution == "Seligson") %>% 
   distinct(ticker)
 
