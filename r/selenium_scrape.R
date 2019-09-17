@@ -17,7 +17,7 @@ eCaps <- list(chromeOptions =
                   "safebrowsing.enabled" =TRUE)))
 
 remote_function <- function(source) {
-  if (source == "selenium") {
+  if (source == "docker") {
     remoteDriver(
       remoteServerAddr = "selenium",
       port = 4444L,
@@ -38,7 +38,7 @@ local_wd <- readLines("local_wd.txt")
 remDr <- if (getwd() == local_wd) {
   remote_function(source = "local")
 } else {
-  remote_function(source = "selenium")
+  remote_function(source = "docker")
 }
 
 remDr$open()
