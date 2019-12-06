@@ -99,9 +99,12 @@ files <- dir_ls("data") %>%
 
 old_file_string <- files %>% 
   filter(date == min(date) & order_number == min(order_number)) 
+
+old_file_raw <- read_lines(old_file_string$value,
+                  skip = 1) %>% 
+  str_remove(";$")
   
-old_file <- read_delim(old_file_string$value,
-                  skip = 1, 
+old_file <- read_delim(old_file_raw,
                   delim = ";",
                   locale = locale(decimal_mark = ",",
                                   encoding = "UTF-8"),
@@ -115,8 +118,11 @@ old_file <- read_delim(old_file_string$value,
 new_file_string <- files %>% 
   filter(date == max(date) & order_number == max(order_number))
 
-new_file <- read_delim(new_file_string$value,
-                       skip = 1, 
+new_file_raw <- read_lines(new_file_string$value,
+                           skip = 1) %>% 
+  str_remove(";$")
+
+new_file <- read_delim(new_file_raw,
                        delim = ";",
                        locale = locale(decimal_mark = ",",
                                        encoding = "UTF-8"),
