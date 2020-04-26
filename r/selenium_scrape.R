@@ -8,6 +8,11 @@ in_dir <- readLines("in_dir.txt")
 selenium_ticker_url <- readLines("selenium_ticker_url.txt")
 selenium_ticker_name <- readLines("selenium_ticker_name.txt")
 
+double_clean <- function (vector) {
+    str_replace_all(vector, ",", ".") %>% 
+    parse_double()
+}
+
 eCaps <- list(chromeOptions = 
                 list(prefs = list(
                   "profile.default_content_settings.popups" = 0L,
@@ -98,7 +103,8 @@ files <- dir_ls("data") %>%
                             TRUE ~ TRUE))
 
 old_file_string <- files %>% 
-  filter(date == min(date) & order_number == min(order_number)) 
+  filter(date == min(date)) %>% 
+  filter(order_number == min(order_number)) 
 
 old_file_raw <- read_lines(old_file_string$value,
                   skip = 1) %>% 
@@ -109,14 +115,25 @@ old_file <- read_delim(old_file_raw,
                   locale = locale(decimal_mark = ",",
                                   encoding = "UTF-8"),
                   col_types = cols(.default = "c")) %>% 
-  transmute(date = ymd(Date),
+  transmute(date = ymd(.[[1]]),
             ticker = str_c(selenium_ticker_name, ".HE"),
-            closing_price = parse_double(str_replace_all(`Closing price`, "\\,", "\\."))) %>% 
-  filter(date >= "2013-06-07") %>% 
+            closing_price = double_clean(.[[4]]),
+            opening_price = lag(closing_price, n = 1),
+            lowest_price = double_clean(.[[3]]),
+            highest_price = double_clean(.[[2]]),
+            closing_adjusted_price = closing_price,
+            opening_adjusted_price = opening_price,
+            lowest_adjusted_price = lowest_price,
+            highest_adjusted_price = highest_price,
+            adjusted_dividends_price = closing_price,
+            trading_volume = str_remove_all(.[[6]], ",") %>% parse_integer(),
+            trading_volume_adjusted = trading_volume) %>% 
+  filter(!is.na(opening_price)) %>% 
   arrange(date)
 
 new_file_string <- files %>% 
-  filter(date == max(date) & order_number == max(order_number))
+  filter(date == max(date)) %>% 
+  filter(order_number == max(order_number))
 
 new_file_raw <- read_lines(new_file_string$value,
                            skip = 1) %>% 
@@ -127,15 +144,30 @@ new_file <- read_delim(new_file_raw,
                        locale = locale(decimal_mark = ",",
                                        encoding = "UTF-8"),
                        col_types = cols(.default = "c")) %>% 
-  transmute(date = ymd(Date),
+  transmute(date = ymd(.[[1]]),
             ticker = str_c(selenium_ticker_name, ".HE"),
-            closing_price = parse_double(str_replace_all(`Closing price`, "\\,", "\\."))) %>% 
-  filter(date > max(old_file$date)) %>% 
+            closing_price = double_clean(.[[4]]),
+            opening_price = lag(closing_price, n = 1),
+            lowest_price = double_clean(.[[3]]),
+            highest_price = double_clean(.[[2]]),
+            closing_adjusted_price = closing_price,
+            opening_adjusted_price = opening_price,
+            lowest_adjusted_price = lowest_price,
+            highest_adjusted_price = highest_price,
+            adjusted_dividends_price = closing_price,
+            trading_volume = str_remove_all(.[[6]], ",") %>% parse_integer(),
+            trading_volume_adjusted = trading_volume) %>% 
+  filter(!is.na(opening_price)) %>% 
   arrange(date)
 
-file_to_save <- bind_rows(old_file, new_file)
+old_rds <- read_rds(str_c("data/", selenium_ticker_name, ".rds"))
 
-write_rds(file_to_save, str_c(in_dir, "/", selenium_ticker_name, ".rds"))
+new_prices <- new_file %>% 
+  anti_join(old_rds, by = "date")
+
+file_to_save <- bind_rows(old_rds, new_prices)
+
+write_rds(file_to_save, str_c(in_dir, "data/", selenium_ticker_name, ".rds"))
 
 files_to_remove <- files %>% 
   filter(remove == TRUE)

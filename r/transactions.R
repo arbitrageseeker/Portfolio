@@ -8,7 +8,7 @@ in_dir <- readLines("in_dir.txt")
 
 ## Nordnet transactions ####
 
-nordnet_transactions_raw <- read_delim(file = str_c(in_dir, "/transaktionsfil.csv"),
+nordnet_transactions_raw <- read_delim(file = str_c(in_dir, "data/transaktionsfil.csv"),
                                      delim = ";",
                                      trim_ws = T,
                                      locale = locale(encoding = "ISO-8859-1"),
@@ -29,7 +29,7 @@ nordnet_transactions <- nordnet_transactions_raw %>%
               Tapahtumatyyppi %in% c("PER LUNASTUS OTTO", "DESIM KIRJAUS OTTO", "MYYNTI") == T ~
                 "sell",
               Tapahtumatyyppi == "YHTIÖIT. IRR JÄTTÖ" & 
-                transaction_amount_raw > 0 ~ "OSTO",
+                transaction_amount_raw > 0 ~ "buy",
               Tapahtumatyyppi == "OSTO" ~ "buy"),
             quantity = case_when(
               transaction_type == "sell" ~ 
@@ -56,7 +56,7 @@ double_clean_nordea <- function (vector) {
     parse_double()
 }
 
-nordea_transactions_raw <- read_xls(str_c(in_dir, "/Nordea_Transactions.xls"))
+nordea_transactions_raw <- read_xls(str_c(in_dir, "data/Nordea_Transactions.xls"))
 
 nordea_transactions <- nordea_transactions_raw %>% 
   filter(str_to_upper(Tapahtumatyyppi) %in% c("OSTO", "MYYNTI") == T) %>%  
@@ -69,7 +69,7 @@ nordea_transactions <- nordea_transactions_raw %>%
             ticker_raw = Kaupankäyntitunnus,
             quantity = case_when(
               transaction_type == "sell" ~
-                double_clean_nordea(Määrä)*(-1),
+                double_clean_nordea(Määrä)*(-1L),
               TRUE ~ double_clean_nordea(Määrä)),
             transaction_price = double_clean_nordea(Kurssi),
             transaction_currency = Valuutta...11,
@@ -84,15 +84,15 @@ nordea_transactions <- nordea_transactions_raw %>%
               TRUE ~ `Transaction amount(Settled)(label.transactiontotalforeign)` %>% 
                 double_clean_nordea()),
             transaction_amount_local =  case_when(
-              transaction_type == "buy" ~
+              transaction_type %in% c("buy", "sell") ~
                 (-1L)*(quantity*transaction_price + transaction_fee_local),
               TRUE ~ quantity*transaction_price - transaction_fee_local),
             transaction_amount_eur = transaction_amount_local*transaction_exchange_rate) %>% 
   select(-transaction_amount_raw)
 
-## Seligson transaction ####
+## Seligson transactions ####
 
-seligson_transactions_raw <- read_xlsx(str_c(in_dir, "/Seligson_tapahtumat.xlsx"))
+seligson_transactions_raw <- read_xlsx(str_c(in_dir, "data/Seligson_tapahtumat.xlsx"))
 
 seligson_transactions <- seligson_transactions_raw %>% 
   transmute(financial_institution = "Seligson",
@@ -113,13 +113,13 @@ transactions_raw <- nordnet_transactions %>%
   bind_rows(nordea_transactions) %>% 
   bind_rows(seligson_transactions)
 
-map_tickers <- read_xlsx(str_c(in_dir, "/Map_tickers.xlsx"))
+map_tickers <- read_xlsx(str_c(in_dir, "data/Map_tickers.xlsx"))
 
 transactions <- transactions_raw %>%
   mutate(ticker = case_when(financial_institution != "Seligson" & transaction_currency == "EUR" ~
                               str_c(ticker_raw, ".HE"),
                             financial_institution != "Seligson" & transaction_currency == "GBX" ~
-                              str_c(ticker_raw, ".L"),
+                              str_c(ticker_raw, ".LSE"),
                             TRUE ~ ticker_raw)) %>% 
   left_join(map_tickers, by = c("ticker_raw" = "orig")) %>% 
   mutate(ticker = if_else(is.na(correct)==T, ticker, correct)) %>% 
@@ -137,7 +137,7 @@ transactions <- transactions_raw %>%
             transaction_amount_eur = sum(transaction_amount_eur)) %>% 
   ungroup()
 
-transactions_old <- read_rds(str_c(in_dir, "/transactions.rds"))
+transactions_old <- read_rds(str_c(in_dir, "data/transactions.rds"))
 
 transactions_new <- transactions %>% 
   anti_join(transactions_old, by = c("financial_institution", "transaction_date", "transaction_type", 
@@ -145,4 +145,4 @@ transactions_new <- transactions %>%
 
 transactions_to_save <- bind_rows(transactions_old, transactions_new)
 
-write_rds(transactions_to_save, str_c(in_dir, "/transactions.rds"))
+write_rds(transactions_to_save, str_c(in_dir, "data/transactions.rds"))
