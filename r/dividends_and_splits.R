@@ -1,4 +1,5 @@
 library(tidyverse)
+library(glue)
 library(lubridate)
 library(readxl)
 library(tidyquant)
@@ -35,9 +36,9 @@ read_splits <- function (ticker) {
 
 splits_raw <- map(tickers_vec, safely(read_splits))
 
-splits <- map(df_splits_raw, ~.x$result) %>% 
+splits <- map(splits_raw, ~.x$result) %>% 
   bind_rows(.id = "id") %>% 
-  transmute(date = parse_date(Date, format = "%Y-%m-%d"),
+  transmute(transaction_date = parse_date(Date, format = "%Y-%m-%d"),
             ticker = ticker,
             split = 1 / (str_extract(`Stock Splits`, ".*(?=\\/)") %>% parse_double() /
                            str_extract(`Stock Splits`, "(?<=\\/).*") %>% parse_double()))
@@ -55,9 +56,9 @@ read_dividends <- function (ticker) {
 
 dividends_raw <- map(tickers_vec, safely(read_dividends))
 
-dividends <- map(df_dividends_raw, ~.x$result) %>% 
+dividends <- map(dividends_raw, ~.x$result) %>% 
   bind_rows(.id = "id") %>% 
-  transmute(date = parse_date(Date, format = "%Y-%m-%d"),
+  transmute(transaction_date = parse_date(Date, format = "%Y-%m-%d"),
             ticker = ticker,
             dividend = parse_double(Dividends))
 
@@ -68,7 +69,7 @@ dividends <- map(df_dividends_raw, ~.x$result) %>%
 splits_old <- read_rds(str_c(in_dir, "data/splits.rds"))
 
 splits_new <- splits %>% 
-  anti_join(splits_old, by = c("date", "ticker"))
+  anti_join(splits_old, by = c("transaction_date", "ticker"))
 
 splits_to_save <- bind_rows(splits_old, splits_new)
 
@@ -79,7 +80,7 @@ write_rds(splits_to_save, str_c(in_dir, "data/splits.rds"))
 dividends_old <- read_rds(str_c(in_dir, "data/dividends.rds"))
 
 dividends_new <- dividends %>% 
-  anti_join(dividends_old, by = c("date", "ticker"))
+  anti_join(dividends_old, by = c("transaction_date", "ticker"))
 
 dividends_to_save <- bind_rows(dividends_old, dividends_new)
 
