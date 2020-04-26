@@ -2,7 +2,6 @@ library(tidyverse)
 library(glue)
 library(lubridate)
 library(readxl)
-library(tidyquant)
 
 eod_api_key <- read_lines("eod_api_key.txt")
 in_dir <- readLines("in_dir.txt")
