@@ -202,3 +202,8 @@ stock_and_fund_prices_new <- stock_and_fund_prices %>%
 stock_and_fund_prices_to_save <- bind_rows(stock_and_fund_prices_old, stock_and_fund_prices_new) 
 
 write_rds(stock_and_fund_prices_to_save, str_c(in_dir, "data/stock_and_fund_prices.rds"))
+
+tickers_new_max_dates <- stock_and_fund_prices_to_save %>% 
+  distinct(ticker, ticker_max_date)
+
+write_rds(tickers_new_max_dates, str_c(in_dir, "data/tickers_max_dates.rds"))
