@@ -47,6 +47,49 @@ currencies_to_save <- bind_rows(currencies_old, currencies_new)
 
 write_rds(currencies_to_save, str_c(in_dir, "data/currencies.rds"))
 
+# processing indices data ####
+
+read_indices_data <- function (ticker) {
+  url <- glue(str_c("https://eodhistoricaldata.com/api/eod/", ticker, "?api_token={eod_api_key}"))
+  
+  read_lines(url) %>% 
+    head(n = -1) %>% 
+    read_csv(col_types = cols(.default = "c")) %>% 
+    mutate(ticker = ticker)
+}
+
+
+indices_vec <- c("GSPC.INDX", "OMXH25.INDX", "FTSE.INDX", "OMXS30.INDX",
+                 "NDX.INDX", "GDAXI.INDX", "OSEAX.INDX", "N225.INDX")
+
+df_indices_raw <- map(indices_vec, safely(read_indices_data))
+
+indices <- map(df_indices_raw, ~.x$result) %>% 
+  bind_rows(.id = "id") %>% 
+  transmute(date = parse_date(Date, format = "%Y-%m-%d"),
+            ticker = ticker,
+            opening_price = parse_double(Open),
+            opening_adjusted_price = opening_price,
+            highest_price = parse_double(High),
+            highest_adjusted_price = highest_price,
+            lowest_price = parse_double(Low),
+            lowest_adjusted_price = lowest_price,
+            closing_price = parse_double(Close),
+            closing_adjusted_price = closing_price,
+            adjusted_dividends_price = parse_double(Adjusted_close),
+            trading_volume = parse_double(Volume),
+            trading_volume_adjusted = trading_volume,
+            turnover = trading_volume * closing_price)
+
+indices_old <- read_rds(str_c(in_dir, "data/indices.rds"))
+
+indices_new <- indices %>% 
+  anti_join(indices_old, by = c("date", "ticker"))
+
+indices_to_save <- bind_rows(indices_old, indices)
+
+write_rds(indices_to_save, str_c(in_dir, "data/indices.rds"))
+
 # processing stock and fund prices
 
 ## stock prices ####
