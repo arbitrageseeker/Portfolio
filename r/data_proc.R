@@ -74,3 +74,9 @@ df_raw <- initialise_dates() %>%
 
 write_rds(df_raw, str_c(in_dir, "data/processed_portfolio_data.rds"))
 
+today <- today() %>% 
+  enframe()
+
+write_rds(today, str_c(in_dir, "data/data_proc_today.rds"))
+
+
