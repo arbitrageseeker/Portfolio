@@ -79,14 +79,15 @@ indices <- map(df_indices_raw, ~.x$result) %>%
             adjusted_dividends_price = parse_double(Adjusted_close),
             trading_volume = parse_double(Volume),
             trading_volume_adjusted = trading_volume,
-            turnover = trading_volume * closing_price)
+            turnover = trading_volume * closing_price) %>% 
+  filter(adjusted_dividends_price > 0)
 
 indices_old <- read_rds(str_c(in_dir, "data/indices.rds"))
 
 indices_new <- indices %>% 
   anti_join(indices_old, by = c("date", "ticker"))
 
-indices_to_save <- bind_rows(indices_old, indices)
+indices_to_save <- bind_rows(indices_old, indices_new)
 
 write_rds(indices_to_save, str_c(in_dir, "data/indices.rds"))
 
