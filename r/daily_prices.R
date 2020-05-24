@@ -58,9 +58,15 @@ read_indices_data <- function (ticker) {
     mutate(ticker = ticker)
 }
 
+indices_vec <- c("GSPC.INDX", "SP500TR.INDX", "OMXH25.INDX",
+                 "UKX.INDX", "UKXNUK.INDX", "OMXS30.INDX",
+                 "NDX.INDX", "GDAXI.INDX", "OSEAX.INDX", "N225.INDX", "TOPX.INDX")
 
-indices_vec <- c("GSPC.INDX", "OMXH25.INDX", "FTSE.INDX", "OMXS30.INDX",
-                 "NDX.INDX", "GDAXI.INDX", "OSEAX.INDX", "N225.INDX")
+indices_tbl <- tibble(ticker = indices_vec,
+                      index = c("S&P 500", "S&P 500 (TR)", "OMX Helsinki 25", 
+                                "FTSE 100 INDEX", "FTSE 100 Net Dividend Total Return Index",
+                                "OMX Stockholm 30", "Nasdaq 100", "DAX Index",
+                                "Oslo All Share", "Nikkei 225 Index", "TOPIX"))
 
 df_indices_raw <- map(indices_vec, safely(read_indices_data))
 
@@ -80,7 +86,8 @@ indices <- map(df_indices_raw, ~.x$result) %>%
             trading_volume = parse_double(Volume),
             trading_volume_adjusted = trading_volume,
             turnover = trading_volume * closing_price) %>% 
-  filter(adjusted_dividends_price > 0)
+  filter(adjusted_dividends_price > 0) %>% 
+  left_join(indices_tbl, by = "ticker")
 
 indices_old <- read_rds(str_c(in_dir, "data/indices.rds"))
 
