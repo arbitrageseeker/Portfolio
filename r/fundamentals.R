@@ -103,17 +103,3 @@ general_new <- df_general %>%
 general_to_save <- bind_rows(general_old, general_new)
 
 write_rds(general_to_save, str_c(in_dir, "data/fundamentals_general.rds"))
-  
-library(leaflet)
-
-leaflet(df2) %>% 
-  addTiles() %>%
-  addCircleMarkers(lng = ~lon, lat = ~lat,
-                   radius = 6.5,
-                   stroke = FALSE, fillOpacity = 1,
-                   label = map(paste0('Yritys: ', df2$name, '<p></p>',
-                                      'Osoite: ', df2$address, '</p><p>'),
-                               htmltools::HTML))
-
-
-shinyLP::runExample()
