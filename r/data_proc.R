@@ -11,15 +11,23 @@ min_date <- transactions %>%
   filter(transaction_date == min(transaction_date)) %>% 
   pluck("transaction_date")
 
-splits <- read_rds(str_c(in_dir, "data/splits.rds")) %>% 
-  mutate(transaction_type = "split")
+ticker_min_dates <- transactions %>% 
+  group_by(ticker) %>% 
+  summarise(min_date = min(transaction_date)) %>% 
+  ungroup()
 
-dividends <- read_rds(str_c(in_dir, "data/dividends.rds")) %>% 
-  mutate(transaction_type = "dividend")
+splits <- read_rds(str_c(in_dir, "data/splits.rds"))
+
+dividends <- read_rds(str_c(in_dir, "data/dividends.rds"))
 
 transactions_total <- transactions %>% 
-  bind_rows(dividends) %>% 
-  bind_rows(splits)
+  full_join(dividends, by = c("transaction_date", "ticker")) %>% 
+  full_join(splits, by = c("transaction_date", "ticker")) %>% 
+  left_join(ticker_min_dates, by = "ticker") %>% 
+  filter((!is.na(dividend) & transaction_date > min_date) |
+           (!is.na(split) & transaction_date >= min_date) |
+           !is.na(transaction_type)) %>% 
+  mutate(dividend = dividend * replace_na(split, 1))
 
 stock_and_fund_prices <- read_rds(str_c(in_dir, "data/stock_and_fund_prices.rds")) 
 
@@ -36,7 +44,6 @@ join_transactions <- function (df) {
   df %>%
     left_join(transactions_total, by = c("date" = "transaction_date", "ticker")) %>% 
     group_by(ticker) %>% 
-    filter(date >= min(date[transaction_type %in% c("buy", "sell")])) %>% 
     fill(transaction_currency, .direction = "down") %>% 
     mutate(quantity = if_else(!is.na(split), 
                               cumsum(replace_na(quantity, 0)) / split - cumsum(replace_na(quantity, 0)),
@@ -79,4 +86,48 @@ today <- today() %>%
 
 write_rds(today, str_c(in_dir, "data/data_proc_today.rds"))
 
+# portfolio account balance ####
 
+df_account_raw <- df_raw %>% 
+  group_by(date) %>% 
+  summarise(account_flow = sum(replace_na(transaction_amount_eur, 0) + replace_na(dividend_eur, 0)),
+            transaction_flow = sum(transaction_amount_eur, na.rm = T),
+            dividend_flow = sum(dividend_eur, na.rm = T)) %>% 
+  ungroup() %>% 
+  arrange(date) %>% 
+  mutate(dividend_cum = cumsum(dividend_flow))
+
+
+balance <- if (df_account_raw$account_flow[1] < 0) {
+  0
+} else {
+  df_account_raw$account_flow[1]
+}
+
+for (i in 2:nrow(df_account_raw)) {
+  
+  balance[i] <- if (df_account_raw$account_flow[i] + balance[i-1] < 0) {
+    0
+  } else {
+    df_account_raw$account_flow[i] + balance[i-1]
+  }
+  
+}
+
+balances <- balance %>% 
+  enframe() %>% 
+  select(balance = value)
+
+df_account_raw2 <- df_account_raw %>% 
+  bind_cols(balances) %>% 
+  mutate(transaction_flow_adj = transaction_flow + replace_na(lag(balance), 0)) %>% 
+  filter(transaction_flow_adj < 0) %>% 
+  select(date, transaction_flow_adj)
+
+df_account <- df_account_raw %>% 
+  bind_cols(balances) %>% 
+  select(date, balance) %>% 
+  left_join(df_account_raw2, by = "date") %>% 
+  mutate(transaction_flow_adj = replace_na(transaction_flow_adj, 0))
+
+write_rds(df_account, str_c(in_dir, "data/processed_account_balance.rds"))
