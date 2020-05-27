@@ -98,6 +98,54 @@ indices_to_save <- bind_rows(indices_old, indices_new)
 
 write_rds(indices_to_save, str_c(in_dir, "data/indices.rds"))
 
+# processing commodities data ####
+
+commodities_xlsx <- read_xlsx("data/Commodities_tickers.xlsx") %>% 
+  mutate(ticker = str_c(ticker, ".COMM"))
+
+commodities_vec <- commodities %>% 
+  pluck("ticker")
+
+read_commodities_data <- function (ticker) {
+  url <- glue(str_c("https://eodhistoricaldata.com/api/eod/", ticker, "?api_token={eod_api_key}"))
+  
+  read_lines(url) %>% 
+    head(n = -1) %>% 
+    read_csv(col_types = cols(.default = "c")) %>% 
+    mutate(ticker = ticker)
+}
+
+df_commodities_raw <- map(commodities_vec, safely(read_commodities_data))
+
+commodities <- map(df_commodities_raw, ~.x$result) %>% 
+  bind_rows(.id = "id") %>% 
+  transmute(date = parse_date(Date, format = "%Y-%m-%d"),
+            ticker = ticker,
+            opening_price = parse_double(Open),
+            opening_adjusted_price = opening_price,
+            highest_price = parse_double(High),
+            highest_adjusted_price = highest_price,
+            lowest_price = parse_double(Low),
+            lowest_adjusted_price = lowest_price,
+            closing_price = parse_double(Close),
+            closing_adjusted_price = closing_price,
+            adjusted_dividends_price = parse_double(Adjusted_close),
+            trading_volume = parse_double(Volume),
+            trading_volume_adjusted = trading_volume,
+            turnover = trading_volume * closing_price) %>% 
+  filter(adjusted_dividends_price > 0) %>% 
+  left_join(commodities_xlsx, by = "ticker") %>% 
+  rename(commodity = name)
+
+commodities_old <- read_rds(str_c(in_dir, "data/commodities.rds"))
+
+commodities_new <- commodities %>% 
+  anti_join(commodities_old, by = c("date", "ticker"))
+
+commodities_to_save <- bind_rows(commodities_old, commodities_new)
+
+write_rds(commodities_to_save, str_c(in_dir, "data/commodities.rds"))
+
 # processing stock and fund prices
 
 ## stock prices ####
