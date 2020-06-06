@@ -103,7 +103,7 @@ write_rds(indices_to_save, str_c(in_dir, "data/indices.rds"))
 commodities_xlsx <- read_xlsx("data/Commodities_tickers.xlsx") %>% 
   mutate(ticker = str_c(ticker, ".COMM"))
 
-commodities_vec <- commodities %>% 
+commodities_vec <- commodities_xlsx %>% 
   pluck("ticker")
 
 read_commodities_data <- function (ticker) {
