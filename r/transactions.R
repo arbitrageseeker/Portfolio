@@ -14,6 +14,8 @@ nordnet_transactions_raw <- read_delim(file = str_c(in_dir, "data/transaktionsfi
                                      locale = locale(encoding = "ISO-8859-1"),
                                      col_types = cols(.default = "c"))
 
+nordnet_transactions_raw <- read_xlsx(str_c(in_dir, "data/transaktionsfil.xlsx"))
+
 double_clean_nordnet <- function (vector) {
   str_replace_all(vector, " ", "") %>%
     str_replace_all(",", ".") %>% 
@@ -37,7 +39,7 @@ nordnet_transactions <- nordnet_transactions_raw %>%
               TRUE ~ double_clean_nordnet(Määrä)),
             transaction_price = double_clean_nordnet(Kurssi),
             transaction_currency = Valuutta,
-            transaction_exchange_rate = double_clean_nordnet(Valuuttakurssi),
+            transaction_exchange_rate = double_clean_nordnet(Vaihtokurssi),
             transaction_fee_local = double_clean_nordnet(Maksut),
             transaction_fee_eur = transaction_fee_local*transaction_exchange_rate,
             transaction_amount_local = case_when(
