@@ -8,12 +8,6 @@ in_dir <- readLines("in_dir.txt")
 
 ## Nordnet transactions ####
 
-nordnet_transactions_raw <- read_delim(file = str_c(in_dir, "data/transaktionsfil.csv"),
-                                     delim = ";",
-                                     trim_ws = T,
-                                     locale = locale(encoding = "ISO-8859-1"),
-                                     col_types = cols(.default = "c"))
-
 nordnet_transactions_raw <- read_xlsx(str_c(in_dir, "data/transaktionsfil.xlsx"))
 
 double_clean_nordnet <- function (vector) {
