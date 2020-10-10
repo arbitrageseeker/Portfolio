@@ -152,7 +152,8 @@ commodities <- map(df_commodities_raw, ~.x$result) %>%
   left_join(commodities_xlsx, by = "ticker") %>% 
   rename(commodity = name)
 
-commodities_old <- read_rds("data/commodities.rds")
+commodities_old <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                                object = "commodities.rds")
 
 commodities_new <- commodities %>% 
   anti_join(commodities_old, by = c("date", "ticker"))
