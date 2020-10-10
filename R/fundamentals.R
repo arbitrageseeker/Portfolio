@@ -4,12 +4,13 @@ library(readxl)
 library(glue)
 library(httr)
 library(tmaptools)
+library(aws.s3)
 
-in_dir <- readLines("in_dir.txt")
-eod_api_key <- read_lines("eod_api_key.txt")
-selenium_ticker_name <- readLines("selenium_ticker_name.txt")
+eod_api_key <- Sys.getenv("eod_api_key")
+selenium_ticker_name <- Sys.getenv("selenium_ticker_name")
 
-transactions <- read_rds(str_c(in_dir, "data/transactions.rds"))
+transactions <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                            object = "transactions.rds")
 
 tickers_vec <- transactions %>% 
   filter(financial_institution != "Seligson") %>% 
@@ -31,14 +32,15 @@ df_raw <- map(tickers_vec, safely(read_fundamentals)) %>%
 
 proc_general <- function (json) {
   
-  json$General %>% 
-    discard(is.null) %>%
-    as_tibble() %>% 
-    select(-Officers) %>% 
-    distinct()
+  var <- json$General %>% 
+    discard(is.null) %>% 
+    compact() %>% 
+    discard(is.list) %>% 
+    as_tibble()
+  
 }
 
-df_raw2 <- map(df_raw, proc_general) %>% 
+df_raw2 <- map(df_raw, proc_general) %>%
   bind_rows(.id = "ticker") %>% 
   select(ticker, exchange = Exchange, address = Address, name = Name, exchange_country = CountryName, 
          exchange_country_iso = CountryISO, sector = Sector, industry = Industry, 
@@ -95,11 +97,19 @@ df_general <- coord_raw %>%
             lat = map_dbl(result, ~.x$result["y"] %||% NA_real_)) %>%
   bind_cols(df_raw2)
 
-general_old <- read_rds(str_c(in_dir, "data/fundamentals_general.rds"))
+general_old <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                                         object = "fundamentals_general.rds")
 
 general_new <- df_general %>% 
   anti_join(general_old, by = "ticker")
 
 general_to_save <- bind_rows(general_old, general_new)
 
-write_rds(general_to_save, str_c(in_dir, "data/fundamentals_general.rds"))
+write_rds(general_to_save, file.path(tempdir(), "fundamentals_general.rds"))
+
+put_object(
+  file = file.path(tempdir(), "fundamentals_general.rds"), 
+  object = "fundamentals_general.rds", 
+  bucket = Sys.getenv("bucket")
+)
+

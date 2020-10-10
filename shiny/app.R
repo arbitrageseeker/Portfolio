@@ -18,12 +18,6 @@ df_fundamentals2 <- df %>%
   left_join(df_fundamentals, by = "ticker") %>% 
   mutate(name_adj = coalesce(name, ticker))
 
-data_proc_today <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"), object = "data_proc_today.rds") %>% 
-  pluck("value")
-
-tickers_max_dates <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"), object = "tickers_max_dates.rds") %>% 
-  mutate(ticker_max_date = as.character(ticker_max_date))
-
 min_date <- min(df$date)
 
 indices <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"), object = "indices.rds")
@@ -126,10 +120,6 @@ ui <- navbarPage(
                            # plotOutput("treemap"),
                            # br(), br(),
                            leafletOutput("map"),
-                           br(), br(),
-                           fluidRow(column(2, tableOutput("tickers_max_dates"))),
-                           br(), br(),
-                           h6("Data päivitetty: ", data_proc_today),
                            br(),
                            h6("Tänään: ", now()),
                          )
@@ -892,39 +882,6 @@ server <- function(input, output, session) {
     
   })
   
-  output$tickers_max_dates <- renderTable(tickers_max_dates)
 }
 
 shinyApp(ui = ui, server = server, options = list(port = 3838))
-
-filtered_stock <- filtered_stock_data() %>% 
-  left_join(df_fundamentals2, by = "ticker") %>% 
-  filter(!is.na(lat)) %>% 
-  group_by(ticker) %>% 
-  filter(date == max(date)) %>% 
-  ungroup() %>% 
-  mutate(tuotto = indeksiluku_twr - 100)
-
-bins <- c(-100, -50, -30, -20, -10, 0, 10, 20, 50, 100, Inf)
-pal <- colorBin("RdYlBu", domain = filtered_stock$indeksiluku_twr, bins = bins)
-
-## value graph
-
-leaflet(filtered_stock) %>% 
-  addTiles() %>%
-  addCircleMarkers(lng = ~lon, lat = ~lat,
-                   radius = 6.5,
-                   fillColor = ~pal(filtered_stock$tuotto),
-                   stroke = FALSE, fillOpacity = 1,
-                   label = map(paste0('Yritys: ', filtered_stock$name_adj, '<p></p>',
-                                      'Osoite: ', filtered_stock$address, '<p></p>',
-                                      'Tuotto-%: ', prettyNum(round(filtered_stock$tuotto, 2),
-                                                              big.mark = " ",
-                                                              decimal.mark = ","), '</p>'),
-                               htmltools::HTML)) %>% 
-  addLegend("bottomright",
-            pal = pal,
-            values = ~filtered_stock$tuotto,
-            title = "Tuotto-%",
-            labFormat = labelFormat(suffix = "%"),
-            opacity = 1)

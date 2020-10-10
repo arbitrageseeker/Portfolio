@@ -2,15 +2,16 @@ library(tidyverse)
 library(glue)
 library(lubridate)
 library(readxl)
+library(aws.s3)
 
-eod_api_key <- read_lines("eod_api_key.txt")
-in_dir <- readLines("in_dir.txt")
-selenium_ticker_name <- readLines("selenium_ticker_name.txt")
-merged_ticker_name <- readLines("merged_ticker_name.txt")
+eod_api_key <- Sys.getenv("eod_api_key")
+selenium_ticker_name <- Sys.getenv("selenium_ticker_name")
+merged_ticker_name <- Sys.getenv("merged_ticker_name")
 
 # tickers from transactions data ####
 
-transactions <- read_rds(str_c(in_dir, "data/transactions.rds")) 
+transactions <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                             object = "transactions.rds")
 
 tickers_vec <- transactions %>% 
   filter(financial_institution != "Seligson") %>% 
@@ -65,22 +66,36 @@ dividends <- map(dividends_raw, ~.x$result) %>%
 
 ## splits ####
 
-splits_old <- read_rds(str_c(in_dir, "data/splits.rds"))
+splits_old <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                            object = "splits.rds")
 
 splits_new <- splits %>% 
   anti_join(splits_old, by = c("transaction_date", "ticker"))
 
 splits_to_save <- bind_rows(splits_old, splits_new)
 
-write_rds(splits_to_save, str_c(in_dir, "data/splits.rds"))
+write_rds(splits_to_save, file.path(tempdir(), "splits.rds"))
+
+put_object(
+  file = file.path(tempdir(), "splits.rds"), 
+  object = "splits.rds", 
+  bucket = Sys.getenv("bucket")
+)
 
 ## dividends ####
 
-dividends_old <- read_rds(str_c(in_dir, "data/dividends.rds"))
+dividends_old <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                           object = "dividends.rds")
 
 dividends_new <- dividends %>% 
   anti_join(dividends_old, by = c("transaction_date", "ticker"))
 
 dividends_to_save <- bind_rows(dividends_old, dividends_new)
 
-write_rds(dividends_to_save, str_c(in_dir, "data/dividends.rds"))
+write_rds(dividends_to_save, file.path(tempdir(), "dividends.rds"))
+
+put_object(
+  file = file.path(tempdir(), "dividends.rds"), 
+  object = "dividends.rds", 
+  bucket = Sys.getenv("bucket")
+)

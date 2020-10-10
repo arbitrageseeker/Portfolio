@@ -1,14 +1,14 @@
 library(tidyverse)
 library(lubridate)
 library(readxl)
-
-in_dir <- readLines("in_dir.txt")
+library(aws.s3)
 
 # processing transactions data ####
 
 ## Nordnet transactions ####
 
-nordnet_transactions_raw <- read_xlsx(str_c(in_dir, "data/transaktionsfil.xlsx"))
+nordnet_transactions_raw <- s3read_using(FUN = read_xlsx, bucket = Sys.getenv("bucket"),
+                                         object = "transaktionsfil.xlsx")
 
 double_clean_nordnet <- function (vector) {
   str_replace_all(vector, " ", "") %>%
@@ -52,7 +52,8 @@ double_clean_nordea <- function (vector) {
     parse_double()
 }
 
-nordea_transactions_raw <- read_xls(str_c(in_dir, "data/Nordea_Transactions.xls"))
+nordea_transactions_raw <- s3read_using(FUN = read_xlsx, bucket = Sys.getenv("bucket"),
+                                        object = "Nordea_Transactions.xls")
 
 nordea_transactions <- nordea_transactions_raw %>% 
   filter(str_to_upper(Tapahtumatyyppi) %in% c("OSTO", "MYYNTI") == T) %>%  
@@ -88,7 +89,8 @@ nordea_transactions <- nordea_transactions_raw %>%
 
 ## Seligson transactions ####
 
-seligson_transactions_raw <- read_xlsx(str_c(in_dir, "data/Seligson_tapahtumat.xlsx"))
+seligson_transactions_raw <- s3read_using(FUN = read_xlsx, bucket = Sys.getenv("bucket"),
+                                          object = "Seligson_tapahtumat.xlsx")
 
 seligson_transactions <- seligson_transactions_raw %>% 
   transmute(financial_institution = "Seligson",
@@ -109,7 +111,8 @@ transactions_raw <- nordnet_transactions %>%
   bind_rows(nordea_transactions) %>% 
   bind_rows(seligson_transactions)
 
-map_tickers <- read_xlsx(str_c(in_dir, "data/Map_tickers.xlsx"))
+map_tickers <- s3read_using(FUN = read_xlsx, bucket = Sys.getenv("bucket"),
+                            object = "Map_tickers.xlsx")
 
 transactions <- transactions_raw %>%
   mutate(ticker = case_when(financial_institution != "Seligson" & transaction_currency == "EUR" ~
@@ -133,7 +136,8 @@ transactions <- transactions_raw %>%
             transaction_amount_eur = sum(transaction_amount_eur)) %>% 
   ungroup()
 
-transactions_old <- read_rds(str_c(in_dir, "data/transactions.rds"))
+transactions_old <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                                 object = "transactions.rds")
 
 transactions_new <- transactions %>% 
   anti_join(transactions_old, by = c("financial_institution", "transaction_date", "transaction_type", 
@@ -141,4 +145,10 @@ transactions_new <- transactions %>%
 
 transactions_to_save <- bind_rows(transactions_old, transactions_new)
 
-write_rds(transactions_to_save, str_c(in_dir, "data/transactions.rds"))
+write_rds(transactions_to_save, file.path(tempdir(), "transactions.rds"))
+
+put_object(
+  file = file.path(tempdir(), "transactions.rds"), 
+  object = "transactions.rds", 
+  bucket = Sys.getenv("bucket")
+)

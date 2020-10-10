@@ -3,14 +3,15 @@ library(lubridate)
 library(readxl)
 library(glue)
 library(tidyquant)
+library(aws.s3)
 
-in_dir <- readLines("in_dir.txt")
-eod_api_key <- read_lines("eod_api_key.txt")
-quandl_api_key(readLines("quandl_api_key.txt"))
-selenium_ticker_name <- readLines("selenium_ticker_name.txt")
-merged_ticker_name <- readLines("merged_ticker_name.txt")
+quandl_api_key(Sys.getenv("quandl_api_key"))
+eod_api_key <- Sys.getenv("eod_api_key")
+selenium_ticker_name <- Sys.getenv("selenium_ticker_name")
+merged_ticker_name <- Sys.getenv("merged_ticker_name")
 
-transactions <- read_rds(str_c(in_dir, "data/transactions.rds"))
+transactions <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                             object = "transactions.rds")
 
 tickers_vec <- transactions %>% 
   filter(financial_institution != "Seligson") %>% 
@@ -38,14 +39,21 @@ currencies <- currencies_raw %>%
               currency == "GBX" ~ (1/value)/100,
               TRUE ~ 1/value))
 
-currencies_old <- read_rds(str_c(in_dir, "data/currencies.rds"))
+currencies_old <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                               object = "currencies.rds")
 
 currencies_new <- currencies %>% 
   anti_join(currencies_old, by = c("date", "currency"))
 
 currencies_to_save <- bind_rows(currencies_old, currencies_new)
 
-write_rds(currencies_to_save, str_c(in_dir, "data/currencies.rds"))
+write_rds(currencies_to_save, file.path(tempdir(), "currencies.rds"))
+
+put_object(
+  file = file.path(tempdir(), "currencies.rds"), 
+  object = "currencies.rds", 
+  bucket = Sys.getenv("bucket")
+)
 
 # processing indices data ####
 
@@ -89,19 +97,26 @@ indices <- map(df_indices_raw, ~.x$result) %>%
   filter(adjusted_dividends_price > 0) %>% 
   left_join(indices_tbl, by = "ticker")
 
-indices_old <- read_rds(str_c(in_dir, "data/indices.rds"))
+indices_old <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                            object = "indices.rds")
 
 indices_new <- indices %>% 
   anti_join(indices_old, by = c("date", "ticker"))
 
 indices_to_save <- bind_rows(indices_old, indices_new)
 
-write_rds(indices_to_save, str_c(in_dir, "data/indices.rds"))
+write_rds(indices_to_save, file.path(tempdir(), "indices.rds"))
+
+put_object(
+  file = file.path(tempdir(), "indices.rds"), 
+  object = "indices.rds", 
+  bucket = Sys.getenv("bucket")
+)
 
 # processing commodities data ####
 
-commodities_xlsx <- read_xlsx("data/Commodities_tickers.xlsx") %>% 
-  mutate(ticker = str_c(ticker, ".COMM"))
+commodities_xlsx <- s3read_using(FUN = read_xlsx, bucket = Sys.getenv("bucket"),
+                              object = "Commodities_tickers.xlsx")
 
 commodities_vec <- commodities_xlsx %>% 
   pluck("ticker")
@@ -137,20 +152,27 @@ commodities <- map(df_commodities_raw, ~.x$result) %>%
   left_join(commodities_xlsx, by = "ticker") %>% 
   rename(commodity = name)
 
-commodities_old <- read_rds(str_c(in_dir, "data/commodities.rds"))
+commodities_old <- read_rds("data/commodities.rds")
 
 commodities_new <- commodities %>% 
   anti_join(commodities_old, by = c("date", "ticker"))
 
 commodities_to_save <- bind_rows(commodities_old, commodities_new)
 
-write_rds(commodities_to_save, str_c(in_dir, "data/commodities.rds"))
+write_rds(commodities_to_save, file.path(tempdir(), "commodities.rds"))
+
+put_object(
+  file = file.path(tempdir(), "commodities.rds"), 
+  object = "commodities.rds", 
+  bucket = Sys.getenv("bucket")
+)
 
 # processing stock and fund prices
 
 ## stock prices ####
 
-selenium_ticker <- read_rds(str_c(in_dir, "data/", selenium_ticker_name, ".rds"))
+selenium_ticker <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                                 object = "selenium_ticker_name.rds")
 
 read_daily_data <- function (ticker) {
   url <- glue(str_c("https://eodhistoricaldata.com/api/eod/", ticker, "?api_token={eod_api_key}"))
@@ -242,7 +264,8 @@ seligson <- tibble(fund = fund_urls) %>%
 
 stock_and_fund_prices <- bind_rows(stock_prices, seligson)
 
-stock_and_fund_prices_old <- read_rds(str_c(in_dir, "data/stock_and_fund_prices.rds")) %>% 
+stock_and_fund_prices_old <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                                          object = "stock_and_fund_prices.rds") %>% 
   group_by(ticker) %>% 
   mutate(ticker_max_date = max(date)) %>% 
   ungroup()
@@ -255,11 +278,18 @@ stock_and_fund_prices_new <- stock_and_fund_prices %>%
   left_join(tickers_max_dates, by = "ticker") %>% 
   filter(date > ticker_max_date)
 
-stock_and_fund_prices_to_save <- bind_rows(stock_and_fund_prices_old, stock_and_fund_prices_new) 
+stock_and_fund_prices_to_save <- bind_rows(stock_and_fund_prices_old, stock_and_fund_prices_new) %>% 
+  select(-(closing_adjusted_price:adjusted_dividends_price)) %>% 
+    left_join(select(stock_and_fund_prices, date, ticker, closing_adjusted_price,
+                     opening_adjusted_price, lowest_adjusted_price,
+                     highest_adjusted_price, adjusted_dividends_price),
+              by = c("date", "ticker")) %>% 
+  select(date:highest_price, closing_adjusted_price:adjusted_dividends_price, everything())
 
-write_rds(stock_and_fund_prices_to_save, str_c(in_dir, "data/stock_and_fund_prices.rds"))
+write_rds(stock_and_fund_prices_to_save, file.path(tempdir(), "stock_and_fund_prices.rds"))
 
-tickers_new_max_dates <- stock_and_fund_prices_to_save %>% 
-  distinct(ticker, ticker_max_date)
-
-write_rds(tickers_new_max_dates, str_c(in_dir, "data/tickers_max_dates.rds"))
+put_object(
+  file = file.path(tempdir(), "stock_and_fund_prices.rds"), 
+  object = "stock_and_fund_prices.rds", 
+  bucket = Sys.getenv("bucket")
+)

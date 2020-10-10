@@ -42,7 +42,7 @@ COPY shiny-server.sh /usr/bin/shiny-server.sh
 RUN chmod 755 /usr/bin/shiny-server.sh
 
 # Copy the app to the image
-COPY shiny/app.R /srv/shiny-server/
+COPY app.R /srv/shiny-server/
 
 # Make all app files readable
 RUN chmod -R 755 /srv/shiny-server/

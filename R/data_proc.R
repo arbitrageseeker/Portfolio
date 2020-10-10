@@ -1,11 +1,11 @@
 library(tidyverse)
 library(lubridate)
-
-in_dir <- readLines("in_dir.txt")
+library(aws.s3)
 
 # sources ####
 
-transactions <- read_rds(str_c(in_dir, "data/transactions.rds")) 
+transactions <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                             object = "transactions.rds") 
 
 min_date <- transactions %>% 
   filter(transaction_date == min(transaction_date)) %>% 
@@ -16,9 +16,11 @@ ticker_min_dates <- transactions %>%
   summarise(min_date = min(transaction_date)) %>% 
   ungroup()
 
-splits <- read_rds(str_c(in_dir, "data/splits.rds"))
+splits <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                       object = "splits.rds")
 
-dividends <- read_rds(str_c(in_dir, "data/dividends.rds"))
+dividends <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                          object = "dividends.rds")
 
 transactions_total <- transactions %>% 
   full_join(dividends, by = c("transaction_date", "ticker")) %>% 
@@ -29,9 +31,11 @@ transactions_total <- transactions %>%
            !is.na(transaction_type)) %>% 
   mutate(dividend = dividend * replace_na(split, 1))
 
-stock_and_fund_prices <- read_rds(str_c(in_dir, "data/stock_and_fund_prices.rds")) 
+stock_and_fund_prices <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                                      object = "stock_and_fund_prices.rds")
 
-currencies <- read_rds(str_c(in_dir, "data/currencies.rds"))
+currencies <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+                           object = "currencies.rds")
 
 # processing data from different sources ####
 
@@ -79,55 +83,10 @@ df_raw <- initialise_dates() %>%
   join_currencies() %>% 
   mutate(dividend_eur = replace_na(dividend * quantity_cum * market_exchange_rate, 0))
 
-write_rds(df_raw, str_c(in_dir, "data/processed_portfolio_data.rds"))
+write_rds(df_raw, file.path(tempdir(), "processed_portfolio_data.rds"))
 
-today <- today() %>% 
-  enframe()
-
-write_rds(today, str_c(in_dir, "data/data_proc_today.rds"))
-
-# portfolio account balance ####
-
-df_account_raw <- df_raw %>% 
-  group_by(date) %>% 
-  summarise(account_flow = sum(replace_na(transaction_amount_eur, 0) + replace_na(dividend_eur, 0)),
-            transaction_flow = sum(transaction_amount_eur, na.rm = T),
-            dividend_flow = sum(dividend_eur, na.rm = T)) %>% 
-  ungroup() %>% 
-  arrange(date) %>% 
-  mutate(dividend_cum = cumsum(dividend_flow))
-
-
-balance <- if (df_account_raw$account_flow[1] < 0) {
-  0
-} else {
-  df_account_raw$account_flow[1]
-}
-
-for (i in 2:nrow(df_account_raw)) {
-  
-  balance[i] <- if (df_account_raw$account_flow[i] + balance[i-1] < 0) {
-    0
-  } else {
-    df_account_raw$account_flow[i] + balance[i-1]
-  }
-  
-}
-
-balances <- balance %>% 
-  enframe() %>% 
-  select(balance = value)
-
-df_account_raw2 <- df_account_raw %>% 
-  bind_cols(balances) %>% 
-  mutate(transaction_flow_adj = transaction_flow + replace_na(lag(balance), 0)) %>% 
-  filter(transaction_flow_adj < 0) %>% 
-  select(date, transaction_flow_adj)
-
-df_account <- df_account_raw %>% 
-  bind_cols(balances) %>% 
-  select(date, balance) %>% 
-  left_join(df_account_raw2, by = "date") %>% 
-  mutate(transaction_flow_adj = replace_na(transaction_flow_adj, 0))
-
-write_rds(df_account, str_c(in_dir, "data/processed_account_balance.rds"))
+put_object(
+  file = file.path(tempdir(), "processed_portfolio_data.rds"), 
+  object = "processed_portfolio_data.rds", 
+  bucket = Sys.getenv("bucket")
+)
