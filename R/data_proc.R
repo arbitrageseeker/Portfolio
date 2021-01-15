@@ -88,5 +88,6 @@ write_rds(df_raw, file.path(tempdir(), "processed_portfolio_data.rds"))
 put_object(
   file = file.path(tempdir(), "processed_portfolio_data.rds"), 
   object = "processed_portfolio_data.rds", 
-  bucket = Sys.getenv("bucket")
+  bucket = Sys.getenv("bucket"),
+  multipart = T
 )

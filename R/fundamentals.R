@@ -8,6 +8,7 @@ library(aws.s3)
 
 eod_api_key <- Sys.getenv("eod_api_key")
 selenium_ticker_name <- Sys.getenv("selenium_ticker_name")
+merged_ticker_name <- Sys.getenv("merged_ticker_name")
 
 transactions <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
                             object = "transactions.rds")
@@ -58,7 +59,9 @@ df_raw2 <- map(df_raw, proc_general) %>%
          street = str_extract(address, "[^\\,]+") %>% str_remove_all("\\d") %>% 
            str_squish(),
          country = str_extract(address, "(?<=\\,).*(?=\\,)") %>% 
-           str_remove(".*\\,") %>% str_squish())
+           str_remove(".*\\,") %>% str_squish()) %>% 
+  mutate(country = if_else(ticker == merged_ticker_name, "United States", country),
+         postal_code = if_else(ticker == merged_ticker_name, "27101", postal_code))
 
 addresses <- df_raw2 %>% 
   transmute(address1 = str_c(street, ", ", house_number, ", ", postal_code, ", ",

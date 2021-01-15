@@ -52,8 +52,11 @@ write_rds(currencies_to_save, file.path(tempdir(), "currencies.rds"))
 put_object(
   file = file.path(tempdir(), "currencies.rds"), 
   object = "currencies.rds", 
-  bucket = Sys.getenv("bucket")
+  bucket = Sys.getenv("bucket"),
+  multipart = T
 )
+
+rm(currencies, currencies_old, currencies_new, currencies_to_save)
 
 # processing indices data ####
 
@@ -110,8 +113,11 @@ write_rds(indices_to_save, file.path(tempdir(), "indices.rds"))
 put_object(
   file = file.path(tempdir(), "indices.rds"), 
   object = "indices.rds", 
-  bucket = Sys.getenv("bucket")
+  bucket = Sys.getenv("bucket"),
+  multipart = T
 )
+
+rm(df_indices_raw, indices, indices_old, indices_new, indices_to_save)
 
 # processing commodities data ####
 
@@ -165,8 +171,11 @@ write_rds(commodities_to_save, file.path(tempdir(), "commodities.rds"))
 put_object(
   file = file.path(tempdir(), "commodities.rds"), 
   object = "commodities.rds", 
-  bucket = Sys.getenv("bucket")
+  bucket = Sys.getenv("bucket"),
+  multipart = T
 )
+
+rm(df_commodities_raw, commodities, commodities_old, commodities_new, commodities_to_save)
 
 # processing stock and fund prices
 
@@ -197,7 +206,7 @@ df_daily <- map(df_daily_raw, ~.x$result) %>%
             lowest_price = parse_double(Low),
             lowest_adjusted_price = lowest_price,
             closing_price = parse_double(Close),
-            closing_adjusted_price = closing_price,
+            closing_adjusted_price = parse_double(Adjusted_close),
             adjusted_dividends_price = parse_double(Adjusted_close),
             trading_volume = parse_double(Volume),
             trading_volume_adjusted = trading_volume,
@@ -226,7 +235,7 @@ df_live <- map(df_live_raw, ~.x$result) %>%
             lowest_price = parse_double(low),
             lowest_adjusted_price = lowest_price,
             closing_price = parse_double(close),
-            closing_adjusted_price = closing_price,
+            closing_adjusted_price = parse_double(close),
             adjusted_dividends_price = parse_double(close),
             trading_volume = parse_double(volume),
             trading_volume_adjusted = trading_volume,
@@ -238,6 +247,8 @@ df_live <- map(df_live_raw, ~.x$result) %>%
 stock_prices <- df_daily %>% 
   bind_rows(df_live) %>% 
   bind_rows(selenium_ticker)
+
+rm(df_daily, df_daily_raw, df_live, df_live_raw, selenium_ticker)
 
 ## fund prices ####
 
@@ -265,7 +276,10 @@ seligson <- tibble(fund = fund_urls) %>%
 
 stock_and_fund_prices <- bind_rows(stock_prices, seligson)
 
-stock_and_fund_prices_old <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
+rm(stock_prices, seligson)
+
+stock_and_fund_prices_old <- s3read_using(FUN = read_rds, 
+                                          bucket = Sys.getenv("bucket"),
                                           object = "stock_and_fund_prices.rds") %>% 
   group_by(ticker) %>% 
   mutate(ticker_max_date = max(date)) %>% 
@@ -292,5 +306,8 @@ write_rds(stock_and_fund_prices_to_save, file.path(tempdir(), "stock_and_fund_pr
 put_object(
   file = file.path(tempdir(), "stock_and_fund_prices.rds"), 
   object = "stock_and_fund_prices.rds", 
-  bucket = Sys.getenv("bucket")
+  bucket = Sys.getenv("bucket"),
+  multipart = T
 )
+
+

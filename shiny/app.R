@@ -8,15 +8,63 @@ library(shinyWidgets)
 library(glue)
 library(leaflet)
 library(aws.s3)
+library(treemap)
+library(d3treeR)
+library(highcharter)
+library(ggthemes)
 
-df <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"), object = "processed_portfolio_data.rds")
+pdf(NULL)
+
+df_raw <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"), object = "processed_portfolio_data.rds")
 
 df_fundamentals <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"), object = "fundamentals_general.rds")
 
-df_fundamentals2 <- df %>% 
+transactions <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"), object = "transactions.rds")
+
+seligson <- transactions %>% 
+  filter(financial_institution == "Seligson") %>% 
+  distinct(ticker) %>% 
+  pluck("ticker")
+
+bte <- transactions %>% 
+  filter(ticker == "BITCOIN XBTE.HE") %>% 
+  distinct(ticker) %>% 
+  pluck("ticker")
+
+df_fundamentals2 <- df_raw %>% 
   distinct(ticker) %>% 
   left_join(df_fundamentals, by = "ticker") %>% 
-  mutate(name_adj = coalesce(name, ticker))
+  mutate(name_adj = coalesce(name, ticker),
+         industry_gic = case_when(ticker %in% seligson ~ "Rahastot",
+                                  ticker %in% bte ~ "ETF",
+                                  TRUE ~ coalesce(industry_gic, industry, "Muut")),
+         sector_gic = case_when(ticker %in% seligson ~ "Rahastot",
+                                ticker %in% bte ~ "ETF",
+                                TRUE ~ coalesce(sector_gic, sector, "Muut")))
+
+df <- df_raw %>% 
+  left_join(df_fundamentals2, by = "ticker") %>% 
+  mutate(industry_gic = case_when(ticker %in% seligson ~ "Rahastot",
+                                  ticker %in% bte ~ "ETF",
+                                  TRUE ~ coalesce(industry_gic, industry, "Muut")),
+         sector_gic = case_when(ticker %in% seligson ~ "Rahastot",
+                                ticker %in% bte ~ "ETF",
+                                TRUE ~ coalesce(sector_gic, sector, "Muut")),
+         country = case_when(ticker %in% seligson ~ "Rahastot",
+                             ticker %in% bte ~ "ETF",
+                             TRUE ~ coalesce(country, "Muut")))
+
+default_stocks <- df %>% 
+  mutate(price_eur = closing_adjusted_price*market_exchange_rate) %>%
+  filter(date >= make_date(year(today()), 1, 1)) %>% 
+  group_by(name_adj) %>% 
+  mutate(return = round(100*(price_eur / first(price_eur) - 1), 2L)) %>% 
+  ungroup() %>% 
+  filter(date == max(date)) %>% 
+  select(name_adj, return) %>% 
+  mutate(rank = rank(return)) %>% 
+  filter(rank <= 3 | rank >= max(rank) - 2) %>% 
+  pluck("name_adj")
 
 min_date <- min(df$date)
 
@@ -50,21 +98,17 @@ sidebar <- sidebarPanel(dateRangeInput("date", "Päivämäärä",
                                              choices = df_fundamentals2$country %>%
                                                unique() %>% sort()),
                         awesomeCheckboxGroup("sector", "Arvopaperin toimialasektori",
-                                             choices = df_fundamentals2$sector %>%
+                                             choices = df_fundamentals2$sector_gic %>%
                                                unique() %>% sort(),
                                              inline = T),
                         selectizeInput("industry", "Arvopaperin toimiala",
-                                       choices = df_fundamentals2$industry %>%
+                                       choices = df_fundamentals2$industry_gic %>%
                                          unique() %>% sort(),
                                        multiple = T),
                         selectizeInput("security", "Arvopaperi",
                                        choices = df_fundamentals2$name_adj %>%
                                          unique() %>% sort(),
-                                       multiple = T),
-                        awesomeCheckboxGroup("index", "Indeksi",
-                                             choices = indices$index %>%
-                                               unique() %>% sort(),
-                                             inline = T)
+                                       multiple = T)
 )
 
 sidebar2 <- sidebarPanel(dateRangeInput("date_macro", "Päivämäärä", 
@@ -108,18 +152,45 @@ ui <- navbarPage(
                                     valueBoxOutput("smallest_return"),
                                     valueBoxOutput("purchases"),
                                     valueBoxOutput("sells")),
-                           br(), br(),
-                           plotOutput("returnplot"),
-                           br(), br(),
-                           plotOutput("valueplot"),
-                           br(), br(),
-                           h2("Arvopaperit"),
-                           br(), br(),
-                           plotOutput("returnplot_stock"),
-                           br(), br(),
-                           # plotOutput("treemap"),
-                           # br(), br(),
-                           leafletOutput("map"),
+                           h2("Kehitys"),
+                           h3("Tuoton kehitys"),
+                           plotOutput("returnplot", height = 600),
+                           awesomeCheckboxGroup("index", label = "Indeksi",
+                                                choices = indices$index %>%
+                                                  unique() %>% sort(),
+                                                selected = c("S&P 500", "OMX Helsinki 25"),
+                                                inline = T),
+                           br(),
+                           fluidRow(column(6,
+                                           plotOutput("returnplot_countries", height = 600)),
+                                    column(6,
+                                           plotOutput("returnplot_sectors", height = 600))),
+                           br(),
+                           br(),
+                           fluidRow(column(6, 
+                                           highchartOutput("barchart_stock_returns", height = 600)),
+                                    column(6, 
+                                           highchartOutput("barchart_industry_returns", height = 600))),
+                           h4("Tuoton kehitys arvopapereittain"),
+                           plotOutput("returnplot_stocks", height = 600),
+                           awesomeCheckboxGroup("stock", label = "Arvopaperi",
+                                                choices = df_fundamentals2$name_adj %>%
+                                                  unique() %>% sort(),
+                                                selected = default_stocks,
+                                                inline = T),
+                           h3("Arvon kehitys"),
+                           plotOutput("valueplot", height = 600),
+                           h2("Allokaatio"),
+                           fluidRow(column(6, 
+                                           d3tree2Output("treemap", height = 600)),
+                                    column(6, 
+                                           d3tree2Output("treemap2", height = 600)),
+                                    column(6, 
+                                           highchartOutput("allocation_bar1", height = 600)),
+                                    column(6, 
+                                           highchartOutput("allocation_bar2", height = 600))),
+                           h2("Osakkeet maantieteellisesti"),
+                           leafletOutput("map", height = 800),
                            br(),
                            h6("Tänään: ", now()),
                          )
@@ -188,19 +259,19 @@ server <- function(input, output, session) {
       pluck("ticker")
     
     sector_filter <- if (is.null(input$sector))
-      df_fundamentals2$sector %>% unique() 
+      df_fundamentals2$sector_gic %>% unique() 
     else input$sector
     
     sectors <- df_fundamentals2 %>% 
-      filter(sector %in% sector_filter) %>% 
+      filter(sector_gic %in% sector_filter) %>% 
       pluck("ticker")
     
-    industry_filter <- if (is.null(input$industry))
-      df_fundamentals2$industry %>% unique() 
-    else input$industry
+    industry_filter <- if (is.null(input$industry_gic))
+      df_fundamentals2$industry_gic %>% unique() 
+    else input$industry_gic
     
     industries <- df_fundamentals2 %>% 
-      filter(industry %in% industry_filter) %>% 
+      filter(industry_gic %in% industry_filter) %>% 
       pluck("ticker")
     
     currency_filter <- if (is.null(input$currency))
@@ -451,7 +522,7 @@ server <- function(input, output, session) {
     else input$financial_institution
     
     security_filter <- if (is.null(input$security))
-      df_fundamentals2$name_adj %>% unique() 
+      df_fundamentals2$name_adj %>% unique()
     else input$security
     
     securities <- df_fundamentals2 %>% 
@@ -467,19 +538,19 @@ server <- function(input, output, session) {
       pluck("ticker")
     
     sector_filter <- if (is.null(input$sector))
-      df_fundamentals2$sector %>% unique() 
+      df_fundamentals2$sector_gic %>% unique() 
     else input$sector
     
     sectors <- df_fundamentals2 %>% 
-      filter(sector %in% sector_filter) %>% 
+      filter(sector_gic %in% sector_filter) %>% 
       pluck("ticker")
     
-    industry_filter <- if (is.null(input$industry))
-      df_fundamentals2$industry %>% unique() 
-    else input$industry
+    industry_filter <- if (is.null(input$industry_gic))
+      df_fundamentals2$industry_gic %>% unique() 
+    else input$industry_gic
     
     industries <- df_fundamentals2 %>% 
-      filter(industry %in% industry_filter) %>% 
+      filter(industry_gic %in% industry_filter) %>% 
       pluck("ticker")
     
     currency_filter <- if (is.null(input$currency))
@@ -516,7 +587,9 @@ server <- function(input, output, session) {
              transaction_currency %in% currency_filter) %>% 
       group_by(ticker) %>% 
       mutate(indeksiluku_twr = 100 * (adjusted_dividends_price/
-                                        first(adjusted_dividends_price))) %>% 
+                                        first(adjusted_dividends_price)),
+             indeksierotus_twr = adjusted_dividends_price/
+                                        lag(adjusted_dividends_price)) %>% 
       ungroup()
     
     filtered3
@@ -598,7 +671,7 @@ server <- function(input, output, session) {
     filtered_stock <- filtered_stock_data()
     
     largest_return <- filtered_stock %>% 
-      group_by(ticker) %>% 
+      group_by(name_adj) %>% 
       summarise(return = 100 * (last(adjusted_dividends_price) /
                                   first(adjusted_dividends_price) - 1)) %>% 
       ungroup() %>% 
@@ -608,7 +681,7 @@ server <- function(input, output, session) {
                         big.mark = " ",
                         decimal.mark = ",")
     
-    valueBox(return, str_c("Suurin tuotto-%: ", unique(largest_return$ticker)))
+    valueBox(return, str_c("Suurin tuotto-%: ", unique(largest_return$name_adj)))
   })
   
   output$smallest_return <- renderValueBox({
@@ -616,7 +689,7 @@ server <- function(input, output, session) {
     filtered_stock <- filtered_stock_data()
     
     smallest_return <- filtered_stock %>% 
-      group_by(ticker) %>% 
+      group_by(name_adj) %>% 
       summarise(return = 100 * (last(adjusted_dividends_price) /
                                   first(adjusted_dividends_price) - 1)) %>% 
       ungroup() %>% 
@@ -626,7 +699,7 @@ server <- function(input, output, session) {
                         big.mark = " ",
                         decimal.mark = ",")
     
-    valueBox(return, str_c("Pienin tuotto-%: ", unique(smallest_return$ticker)))
+    valueBox(return, str_c("Pienin tuotto-%: ", unique(smallest_return$name_adj)))
   })
   
   output$purchases <- renderValueBox({
@@ -700,6 +773,86 @@ server <- function(input, output, session) {
     
   })
   
+  output$returnplot_countries <- renderPlot({
+    
+    filtered_stock <- filtered_stock_data() %>% 
+      mutate(amount = quantity_cum*closing_price*market_exchange_rate,
+             price_eur = adjusted_dividends_price*market_exchange_rate) %>%
+      group_by(ticker) %>% 
+      mutate(return = price_eur / first(price_eur) - 1) %>% 
+      ungroup() %>% 
+      group_by(date) %>% 
+      mutate(total_amount = sum(amount)) %>% 
+      ungroup() %>% 
+      mutate(weight = amount / total_amount) %>% 
+      group_by(country, date) %>% 
+      summarise(return_country = round(100*weighted.mean(return, weight), 2L)) %>% 
+      ungroup()
+    
+    return_graafi <- filtered_stock %>%
+      ggplot(aes(x = date)) + ggthemes::theme_economist() +
+      theme(legend.position = "bottom",
+            legend.title = element_blank(),
+            axis.title = element_blank()) +
+      geom_line(aes(y = return_country, colour = country)) +
+      ggtitle("Portfolion tuoton (€) kehitys maittain")
+    
+    return_graafi
+    
+    
+  })
+  
+  output$returnplot_sectors <- renderPlot({
+    
+    filtered_stock <- filtered_stock_data() %>% 
+      mutate(amount = quantity_cum*closing_price*market_exchange_rate,
+             price_eur = adjusted_dividends_price*market_exchange_rate) %>%
+      group_by(ticker) %>% 
+      mutate(return = price_eur / first(price_eur) - 1) %>% 
+      ungroup() %>% 
+      group_by(date) %>% 
+      mutate(total_amount = sum(amount)) %>% 
+      ungroup() %>% 
+      mutate(weight = amount / total_amount) %>% 
+      group_by(sector_gic, date) %>% 
+      summarise(return_sector = round(100*weighted.mean(return, weight), 2L)) %>% 
+      ungroup()
+    
+    return_graafi <- filtered_stock %>%
+      ggplot(aes(x = date)) + ggthemes::theme_economist() +
+      theme(legend.position = "bottom",
+            legend.title = element_blank(),
+            axis.title = element_blank()) +
+      geom_line(aes(y = return_sector, colour = sector_gic)) +
+      ggtitle("Portfolion tuoton (€) kehitys toimialasektoreittain")
+    
+    return_graafi
+    
+  })
+  
+  output$returnplot_stocks <- renderPlot({
+    
+    filtered_stock <- filtered_stock_data() %>% 
+      filter(name_adj %in% input$stock) %>% 
+      mutate(price_eur = closing_adjusted_price*market_exchange_rate) %>%
+      group_by(ticker) %>% 
+      mutate(return = round(100*(price_eur / first(price_eur) - 1), 2L),
+             tuotto = indeksiluku_twr - 100) %>% 
+      ungroup()
+    
+    return_graafi <- filtered_stock %>%
+      ggplot(aes(x = date)) + ggthemes::theme_economist() +
+      theme(legend.position = "bottom",
+            legend.title = element_blank(),
+            axis.title = element_blank()) +
+      geom_line(aes(y = return, colour = name_adj)) +
+      ggtitle("Portfolion tuoton (€) kehitys arvopapereittain") +
+      ylab(element_blank())
+    
+    return_graafi
+    
+  })
+  
   output$valueplot <- renderPlot({
     
     filtered_grouped2 <- filtered_data() 
@@ -721,56 +874,214 @@ server <- function(input, output, session) {
     
   })
   
-  output$returnplot_stock <- renderPlot({
+  output$allocation_bar1 <- highcharter::renderHighchart({
     
-    filtered_stock <- filtered_stock_data() 
+    treemap_data <- treemap_data() %>% 
+      arrange(desc(amount))
     
-    ## value graph
+    highchart() %>% 
+      hc_add_series(name = "Arvo €", data = treemap_data, type = "bar", 
+                    mapping = hcaes(x = name_adj, y = amount, color = country),
+                    dataLabels = list(format='{point.y:,.2f}',  enabled = TRUE)) %>% 
+      hc_xAxis(categories = treemap_data$name_adj) %>%
+      #hc_title("Allokaatio arvopapereittain") %>% 
+      hc_add_annotation(labels = treemap_data$amount) %>%  
+      hc_add_theme(hc_theme_economist())
     
-    j <- filtered_stock %>%
-      left_join(df_fundamentals2, by = "ticker") %>% 
-      ggplot(aes(x = date)) + ggthemes::theme_economist() +
-      geom_line(aes(y = indeksiluku_twr, colour = name_adj)) +
-      theme(legend.position = "bottom",
-            legend.title = element_blank(),
-            axis.title = element_blank()) +
-      ggtitle("Arvopaperien tuoton (€) kehitys") +
-      ylab(element_blank())
-    
-    j
     
   })
   
-  # output$treemap <- renderPlot({
-  #   
-  #   filtered_stock <- filtered_stock_data() 
-  #   
-  #   ## value graph
-  #   
-  #   j <- filtered_stock %>%
-  #     group_by(ticker) %>% 
-  #     filter(date == max(date)) %>% 
-  #     ungroup() %>% 
-  #     left_join(df_fundamentals2, by = "ticker") %>% 
-  #     filter(!is.na(sector)) %>% 
-  #     group_by(ticker) %>% 
-  #     mutate(market_value = quantity_cum * closing_price * market_exchange_rate) %>% 
-  #     data_to_hierarchical(c(name_adj),
-  #                          market_value
-  #                          )
-  #   
-  #   k <-  hchart(j, "treemap",
-  #                hcaes(x = name_adj, value = market_value, color = market_value))
-  #     
-  #   k
-  #   
-  #   
-  # })
+  output$barchart_stock_returns <- highcharter::renderHighchart({
+    
+    filtered_stock <- filtered_stock_data() %>% 
+      mutate(price_eur = closing_adjusted_price*market_exchange_rate) %>%
+      group_by(ticker) %>% 
+      mutate(return = round(100*(price_eur / first(price_eur) - 1), 2L),
+             tuotto = indeksiluku_twr - 100) %>% 
+      ungroup() %>% 
+      filter(date == max(date)) %>%
+      arrange(desc(tuotto))
+    
+    
+    highchart() %>% 
+      hc_add_series(name = "Tuotto-% (€)", data = filtered_stock, type = "bar", 
+                    mapping = hcaes(x = name_adj, y = tuotto, color = country),
+                    dataLabels = list(format='{point.y:,.2f}',  enabled = TRUE)) %>% 
+      hc_xAxis(categories = filtered_stock$name_adj) %>%
+      hc_title(text = "Tuotto-% (€) arvopapereittain",
+               margin = 20,
+               align = "left",
+               style = list(color = "#014d64", useHTML = TRUE)) %>% 
+      hc_add_annotation(labels = filtered_stock$tuotto) %>%  
+      hc_add_theme(hc_theme_economist())
+    
+    
+  })
+  
+  output$barchart_industry_returns <- highcharter::renderHighchart({
+    
+    filtered_stock <- filtered_stock_data() %>% 
+      mutate(amount = quantity_cum*closing_price*market_exchange_rate,
+             price_eur = adjusted_dividends_price*market_exchange_rate) %>%
+      group_by(ticker) %>% 
+      mutate(return = price_eur / first(price_eur) - 1) %>% 
+      ungroup() %>% 
+      group_by(date) %>% 
+      mutate(total_amount = sum(amount)) %>% 
+      ungroup() %>% 
+      mutate(weight = amount / total_amount) %>% 
+      group_by(industry_gic, date, sector_gic) %>% 
+      summarise(return_industry = round(100*weighted.mean(return, weight), 2L)) %>% 
+      ungroup() %>% 
+      filter(date == max(date)) %>%
+      arrange(desc(return_industry))
+    
+    #ClickFunction <- JS("function(event) {Shiny.onInputChange('Clicked', event.point.name);}")
+    
+    
+    highchart() %>% 
+      hc_add_series(name = "Tuotto-% (€)", data = filtered_stock, type = "bar", 
+                    mapping = hcaes(x = industry_gic, y = return_industry, color = sector_gic),
+                    dataLabels = list(format='{point.y:,.2f}',  enabled = TRUE)) %>% 
+      hc_xAxis(categories = filtered_stock$industry_gic) %>%
+      hc_title(text = "Tuotto-% (€) toimialoittain",
+               margin = 20,
+               align = "left",
+               style = list(color = "#014d64", useHTML = TRUE)) %>% 
+      hc_add_annotation(labels = filtered_stock$return_industry) %>%  
+      hc_add_theme(hc_theme_economist())
+    
+    
+  })
+  
+  
+  treemap_data <- reactive({
+    
+    filtered_stock <- filtered_stock_data()
+    
+    df_group <- filtered_stock %>% 
+      filter(date == max(date)) %>%
+      mutate(amount = round(quantity_cum*closing_price*market_exchange_rate, 2L),
+             share = round(100 * amount / sum(amount), 2)) %>% 
+      mutate(index = paste(name_adj, amount, share, sep =" \n ")) %>% 
+      group_by(industry_gic) %>% 
+      mutate(amount2 = round(sum(amount), 2L)) %>% 
+      ungroup() %>% 
+      mutate(share2 = round(100*amount2/sum(amount), 2L)) %>% 
+      group_by(sector_gic) %>% 
+      mutate(amount3 = round(sum(amount), 2L)) %>% 
+      ungroup() %>% 
+      mutate(share3 = round(100*amount3/sum(amount), 2L),
+             index2 = paste(industry_gic, amount2, share2, sep = " \n "),
+             index3 = paste(sector_gic, amount3, share3, sep = " \n ")) %>% 
+      group_by(country) %>% 
+      mutate(country_amount = round(sum(amount), 2L)) %>% 
+      ungroup() %>% 
+      mutate(country_share = round(100*country_amount/sum(amount), 2L),
+             country_index = paste(country, country_amount, country_share, sep = " \n "))
+  })
+  
+  output$treemap <- renderD3tree2({
+    
+    ## treemap
+
+    treemap_data <- treemap_data()
+    
+    varit <- ggthemes::economist_pal()(9)
+    
+    p <- treemap(treemap_data,
+                 index=c("index3","index2", "index"),
+                 #index = "index",
+                 vSize = "amount",
+                 type="index",
+                 #palette=varit,
+                 #palette = "Set2",
+                 #bg.labels=c("white"),
+                 align.labels=list(
+                   c("center", "center"), 
+                   c("right", "bottom")
+                 )  
+    ) 
+
+    inter <- d3tree2(p, rootname = "Allokaatio sektoreittain")
+    
+    inter
+
+
+  })
+  
+  output$treemap2 <- renderD3tree2({
+    
+    ## treemap
+    
+    treemap_data <- treemap_data()
+    
+    varit <- ggthemes::economist_pal()(9)
+    
+    p <- treemap(treemap_data,
+                 index=c("country_index", "index"),
+                 vSize = "amount",
+                 type="index",
+                 #palette=varit,
+                 #palette = "Set2",
+                 #bg.labels=c("white"),
+                 align.labels=list(
+                   c("center", "center"), 
+                   c("right", "bottom")
+                 )  
+    ) 
+    
+    inter <- d3tree2(p, rootname = "Allokaatio maittain")
+    
+    inter
+    
+    
+  })
+  
+  output$allocation_bar1 <- highcharter::renderHighchart({
+    
+    treemap_data <- treemap_data() %>% 
+      arrange(desc(amount))
+    
+    highchart() %>% 
+      hc_add_series(name = "Arvo €", data = treemap_data, type = "bar", 
+                    mapping = hcaes(x = name_adj, y = amount, color = country),
+                    dataLabels = list(format='{point.y:,.2f}',  enabled = TRUE)) %>% 
+      hc_xAxis(categories = treemap_data$name_adj) %>%
+      hc_title(text = "Allokaatio arvopapereittain",
+               margin = 20,
+               align = "left",
+               style = list(color = "#014d64", useHTML = TRUE)) %>% 
+      hc_add_annotation(labels = treemap_data$amount) %>%  
+      hc_add_theme(hc_theme_economist())
+    
+    
+  })
+  
+  output$allocation_bar2 <- highcharter::renderHighchart({
+    
+    treemap_data <- treemap_data() %>% 
+      distinct(sector_gic, industry_gic, amount2) %>% 
+      arrange(desc(amount2))
+    
+    highchart() %>% 
+      hc_add_series(name = "Arvo €", data = treemap_data, type = "bar", 
+                    mapping = hcaes(x = industry_gic, y = amount2, color = sector_gic),
+                    dataLabels = list(format='{point.y:,.2f}',  enabled = TRUE)) %>% 
+      hc_title(text = "Allokaatio toimialoittain",
+               margin = 20,
+               align = "left",
+               style = list(color = "#014d64", useHTML = TRUE)) %>% 
+      hc_xAxis(categories = treemap_data$industry_gic) %>%
+      hc_add_annotation(labels = treemap_data$amount2) %>%  
+      hc_add_theme(hc_theme_economist())
+    
+    
+  })
   
   output$map <- renderLeaflet({
     
     filtered_stock <- filtered_stock_data() %>% 
-      left_join(df_fundamentals2, by = "ticker") %>% 
       filter(!is.na(lat)) %>% 
       group_by(ticker) %>% 
       filter(date == max(date)) %>% 

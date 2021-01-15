@@ -1,4 +1,4 @@
-FROM rocker/shiny-verse:3.5  
+FROM rocker/shiny-verse:latest 
 
 # Logging path
 RUN mkdir -p /var/lib/shiny-server/bookmarks/shiny
@@ -19,20 +19,27 @@ RUN apt-get update \
     sudo \
     wget \
     libclang-dev \
-    libclang-3.8-dev \
-    libobjc-6-dev \
-    libclang1-3.8 \
-    libclang-common-3.8-dev \
-    libllvm3.8 \
+    libclang-dev \
+    libobjc-7-dev \
+    libclang1\
+    libclang-common-8-dev \
     libobjc4 \
     libgc1c2 \
-    python-pip \
+    software-properties-common
+
+RUN add-apt-repository universe 
+
+RUN apt-get update \
+&& apt-get install -y --no-install-recommends \
+    python3-pip \
     dialog \
     nano \
-    && pip install virtualenv \
-    && pip install awscli    
+    && pip3 install virtualenv \
+    && pip3 install awscli    
 
-RUN R -e "install.packages(c('tidyverse', 'lubridate', 'shiny','shinydashboard','scales','shinythemes','ggthemes', 'shinyWidgets', 'glue', 'leaflet', 'aws.s3'), repos='http://cran.rstudio.com/')"
+RUN R -e "install.packages(c('tidyverse', 'remotes', 'lubridate', 'shiny','shinydashboard','scales','shinythemes','ggthemes', 'shinyWidgets', 'glue', 'leaflet', 'aws.s3', 'treemap', 'highcharter'), repos='http://cran.rstudio.com/')"
+
+RUN R -e "remotes::install_github('d3treeR/d3treeR')"
 
 COPY .Renviron /home/shiny/.Renviron
 RUN chown shiny.shiny /home/shiny/.Renviron
