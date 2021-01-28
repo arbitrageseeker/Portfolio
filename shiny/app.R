@@ -73,7 +73,7 @@ indices <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"), object = 
 commodities <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"), object = "commodities.rds")
 
 sidebar <- sidebarPanel(dateRangeInput("date", "Päivämäärä", 
-                                       start = make_date(year(today()), 1, 1),
+                                       start = today() %m-% months(3),
                                        end = max(df$date, na.rm = T),
                                        min = min(df$date, na.rm = T),
                                        max = max(df$date, na.rm = T),
