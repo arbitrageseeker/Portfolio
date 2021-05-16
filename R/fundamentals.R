@@ -9,6 +9,7 @@ library(aws.s3)
 eod_api_key <- Sys.getenv("eod_api_key")
 selenium_ticker_name <- Sys.getenv("selenium_ticker_name")
 merged_ticker_name <- Sys.getenv("merged_ticker_name")
+voima_ticker_name <- Sys.getenv("voima_ticker_name")
 
 transactions <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
                             object = "transactions.rds")
@@ -17,6 +18,7 @@ tickers_vec <- transactions %>%
   filter(financial_institution != "Seligson") %>% 
   distinct(ticker) %>% 
   filter(!ticker %in% c(str_c(selenium_ticker_name, ".HE"))) %>% 
+  filter(!ticker %in% voima_ticker_name) %>% 
   pluck("ticker")
 
 
@@ -116,3 +118,68 @@ put_object(
   bucket = Sys.getenv("bucket")
 )
 
+
+
+proc_financials <- function (json) {
+  
+  tibble(
+    market_cap_million_usd = json$Highlights$MarketCapitalizationMln,
+    ebitda_usd = json$Highlights$EBITDA,
+    pe_ratio = json$Highlights$PERatio,
+    #peg_ratio = json$Highlights$PEGRatio
+    wall_street_target_price = json$Highlights$WallStreetTargetPrice,
+    book_value = json$Highlights$BookValue,
+    dividend_per_share = json$Highlights$DividendShare,
+    dividend_yield = json$Highlights$DividendYield,
+    earnings_share = json$Highlights$EarningsShare,
+    eps_estimate_current_year = json$Highlights$EPSEstimateCurrentYear,
+    eps_estimate_next_year = json$Highlights$EPSEstimateNextYear,
+    eps_estimate_next_quarter = json$Highlights$EPSEstimateNextQuarter,
+    eps_estimate_current_quarter = json$Highlights$EPSEstimateCurrentQuarter,
+    most_recent_quarter = json$Highlights$MostRecentQuarter,
+    profit_margin = json$Highlights$ProfitMargin,
+    operating_margin = json$Highlights$OperatingMarginTTM,
+    return_on_assets = json$Highlights$ReturnOnAssetsTTM,
+    return_on_equity = json$Highlights$ReturnOnEquityTTM,
+    revenue = json$Highlights$RevenueTTM,
+    revenue_per_share = json$Highlights$RevenuePerShareTTM,
+    revenue_growth_yoy = json$Highlights$QuarterlyRevenueGrowthYOY,
+    gross_profit = json$Highlights$GrossProfitTTM,
+    diluted_eps = json$Highlights$DilutedEpsTTM,
+    earnings_growth_yoy = json$Highlights$QuarterlyEarningsGrowthYOY,
+    trailing_pe = json$Valuation$TrailingPE,
+    forward_pe = json$Valuation$ForwardPE,
+    price_per_sales = json$Valuation$PriceSalesTTM,
+    price_per_book = json$Valuation$PriceBookMRQ,
+    ev_per_revenue = json$Valuation$EnterpriseValueRevenue,
+    ev_per_ebitda = json$Valuation$EnterpriseValueEbitda
+  )
+}
+
+proc_financials <- function (json) {
+  
+  var <- json$Highlights %>% 
+    compact() %>% 
+    as_tibble()
+  
+  var2 <- json$Valuation %>% 
+    compact() %>% 
+    as_tibble()
+  
+  var3 <- json$Technicals %>% 
+    compact() %>% 
+    as_tibble()
+  
+  bind_cols(var, var2) %>% 
+    bind_cols(var3)
+}
+
+juu <- map(df_raw, proc_financials) %>%
+  bind_rows(.id = "ticker") 
+
+  
+jaa <- jnj$Highlights %>% 
+  #discard(is.null) #%>% 
+  compact() %>% 
+  #discard(is.list) %>% 
+  as_tibble()

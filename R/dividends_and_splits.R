@@ -7,6 +7,7 @@ library(aws.s3)
 eod_api_key <- Sys.getenv("eod_api_key")
 selenium_ticker_name <- Sys.getenv("selenium_ticker_name")
 merged_ticker_name <- Sys.getenv("merged_ticker_name")
+voima_ticker_name <- Sys.getenv("voima_ticker_name")
 
 # tickers from transactions data ####
 
@@ -17,6 +18,7 @@ tickers_vec <- transactions %>%
   filter(financial_institution != "Seligson") %>% 
   distinct(ticker) %>% 
   filter(!ticker %in% c(str_c(selenium_ticker_name, ".HE"))) %>% 
+  filter(!ticker %in% voima_ticker_name) %>% 
   pluck("ticker")
 
 min_date <- transactions %>% 

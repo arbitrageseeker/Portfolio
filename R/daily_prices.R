@@ -9,6 +9,7 @@ quandl_api_key(Sys.getenv("quandl_api_key"))
 eod_api_key <- Sys.getenv("eod_api_key")
 selenium_ticker_name <- Sys.getenv("selenium_ticker_name")
 merged_ticker_name <- Sys.getenv("merged_ticker_name")
+voima_ticker_name <- Sys.getenv("voima_ticker_name")
 
 transactions <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
                              object = "transactions.rds")
@@ -17,6 +18,7 @@ tickers_vec <- transactions %>%
   filter(financial_institution != "Seligson") %>% 
   distinct(ticker) %>% 
   filter(!ticker %in% c(str_c(selenium_ticker_name, ".HE"))) %>% 
+  filter(!ticker %in% voima_ticker_name) %>% 
   pluck("ticker")
 
 min_date <- transactions %>% 
@@ -181,6 +183,9 @@ rm(df_commodities_raw, commodities, commodities_old, commodities_new, commoditie
 
 ## stock prices ####
 
+voima_prices <- commodities %>% 
+  filter(ticker == voima_ticker_name)
+
 selenium_ticker <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
                                  object = "selenium_ticker_name.rds")
 
@@ -274,7 +279,8 @@ seligson <- tibble(fund = fund_urls) %>%
 
 # combine and save ####
 
-stock_and_fund_prices <- bind_rows(stock_prices, seligson)
+stock_and_fund_prices <- bind_rows(stock_prices, seligson) %>% 
+  bind_rows(voima_prices)
 
 rm(stock_prices, seligson)
 
@@ -288,10 +294,17 @@ stock_and_fund_prices_old <- s3read_using(FUN = read_rds,
 tickers_max_dates <- stock_and_fund_prices_old %>% 
   distinct(ticker, ticker_max_date)
 
+transactions_min_date <- transactions %>% 
+  group_by(ticker) %>% 
+  filter(transaction_date == min(transaction_date)) %>% 
+  ungroup() %>% 
+  distinct(ticker, transaction_date)
+
 stock_and_fund_prices_new <- stock_and_fund_prices %>% 
   anti_join(stock_and_fund_prices_old, by = c("date", "ticker")) %>% 
   left_join(tickers_max_dates, by = "ticker") %>% 
-  filter(date > ticker_max_date)
+  left_join(transactions_min_date, by = "ticker") %>% 
+  filter(date > ticker_max_date | (is.na(ticker_max_date) & date >= transaction_date))
 
 stock_and_fund_prices_to_save <- bind_rows(stock_and_fund_prices_old, stock_and_fund_prices_new) %>% 
   select(-(closing_adjusted_price:adjusted_dividends_price)) %>% 
