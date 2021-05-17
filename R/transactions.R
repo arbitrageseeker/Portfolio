@@ -106,9 +106,6 @@ seligson_transactions <- seligson_transactions_raw %>%
 
 ## Voima transaction ####
 
-voima_transactions_raw <- read_csv("data/voima_gold_transactions.csv",
-                                   col_types = cols(.default = "c"))
-
 read_csv_mod <- function(file) {
   
   read_csv(file,
