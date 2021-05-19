@@ -177,7 +177,7 @@ put_object(
   multipart = T
 )
 
-rm(df_commodities_raw, commodities, commodities_old, commodities_new, commodities_to_save)
+rm(df_commodities_raw, commodities_old, commodities_new, commodities_to_save)
 
 # processing stock and fund prices
 
@@ -185,6 +185,8 @@ rm(df_commodities_raw, commodities, commodities_old, commodities_new, commoditie
 
 voima_prices <- commodities %>% 
   filter(ticker == voima_ticker_name)
+
+rm(commodities)
 
 selenium_ticker <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"),
                                  object = "selenium_ticker_name.rds")
