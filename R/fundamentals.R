@@ -174,12 +174,3 @@ proc_financials <- function (json) {
     bind_cols(var3)
 }
 
-juu <- map(df_raw, proc_financials) %>%
-  bind_rows(.id = "ticker") 
-
-  
-jaa <- jnj$Highlights %>% 
-  #discard(is.null) #%>% 
-  compact() %>% 
-  #discard(is.list) %>% 
-  as_tibble()
