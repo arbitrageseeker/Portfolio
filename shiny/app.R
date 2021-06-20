@@ -21,6 +21,9 @@ df_fundamentals <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"), o
 
 transactions <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"), object = "transactions.rds")
 
+df_fundamentals_financials <- s3read_using(FUN = read_rds, bucket = Sys.getenv("bucket"), 
+                                           object = "fundamentals_current_financials.rds")
+
 seligson <- transactions %>% 
   filter(financial_institution == "Seligson") %>% 
   distinct(ticker) %>% 
@@ -141,9 +144,6 @@ ui <- navbarPage(
   tabPanel("Päänäkymä",
            tags$head(tags$style(".checkbox-inline {margin: 0 !important;}
                                 .radio-inline {margin:  0 !important;}")),
-           actionButton(inputId = "logout",  label = "Kirjaudu ulos",
-                        onclick = "location.href='https://dev-b2o8zudv.eu.auth0.com/v2/logout';"),
-           br(), br(),
            sidebarLayout(sidebar,
                          mainPanel(
                            fluidRow(valueBoxOutput("portfolio_return"),
@@ -199,9 +199,6 @@ ui <- navbarPage(
   tabPanel("Makro",
            tags$head(tags$style(".checkbox-inline {margin: 0 !important;}
                                 .radio-inline {margin:  0 !important;}")),
-           actionButton(inputId = "logout2",  label = "Kirjaudu ulos",
-                        onclick = "location.href='https://dev-b2o8zudv.eu.auth0.com/v2/logout';"),
-           br(), br(),
            sidebarLayout(sidebar2,
                          mainPanel(
                            h2("Indeksit"),
@@ -211,6 +208,18 @@ ui <- navbarPage(
                            h2("Raaka-aineet"),
                            br(),
                            plotOutput("commodities_plot"),
+                           br(), br()
+                         )
+           )
+  ),
+  tabPanel("Arvopaperit",
+           tags$head(tags$style(".checkbox-inline {margin: 0 !important;}
+                                .radio-inline {margin:  0 !important;}")),
+           sidebarLayout(sidebar,
+                         mainPanel(
+                           h2("Tunnusluvut"),
+                           br(),
+                           dataTableOutput("tunnusluvut_table"),
                            br(), br()
                          )
            )
@@ -1192,6 +1201,37 @@ server <- function(input, output, session) {
     }
     
   })
+  
+  
+  output$tunnusluvut_table <- renderDataTable(
+    
+    df_fundamentals_financials %>% 
+      filter(ticker %in% !!filtered_stock_data()$ticker) %>% 
+      transmute(ticker,
+                PETrailing = TrailingPE,
+                PEForward = ForwardPE,
+                PriceToSales = PriceSalesTTM,
+                PriceToBook = PriceBookMRQ,
+                `EV / Sales` = EnterpriseValueRevenue,
+                `EV / EBITDA` = EnterpriseValueEbitda,
+                Beta,
+                ROE = ReturnOnEquityTTM * 100,
+                ROA = ReturnOnAssetsTTM * 100,
+                OperatingMargin = OperatingMarginTTM * 100,
+                MarketCap = MarketCapitalizationMln,
+                EPS = EarningsShare,
+                EPSDiluted = DilutedEpsTTM,
+                QuarterlyRevenueGrowthYOY,
+                QuarterlyEarningsGrowthYOY,
+                DividendShare,
+                DividendYield,
+                InsidersRatio = PercentInsiders,
+                InstitutionsRatio = PercentInstitutions,
+                ShortRatio = ShortRatio
+      )
+    
+  )
+  
   
 }
 
