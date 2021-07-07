@@ -220,33 +220,32 @@ df_daily <- map(df_daily_raw, ~.x$result) %>%
             turnover = trading_volume * closing_price)
 
 read_live_data <- function (ticker) {
-  url <- glue(str_c("https://eodhistoricaldata.com/api/real-time/", ticker, "?api_token={eod_api_key}&fmt=csv"))
+  url <- glue(str_c("https://eodhistoricaldata.com/api/real-time/", ticker, "?api_token={eod_api_key}&fmt=json"))
   
-  read_lines(url) %>% 
-    head(n = -1) %>% 
-    read_csv(col_types = cols(.default = "c")) %>% 
-    mutate(ticker = ticker)
+  httr::GET(url) %>% 
+    httr::content("parsed") %>% 
+    as_tibble()
 }
 
 df_live_raw <- map(tickers_vec, safely(read_live_data))
 
-df_live <- map(df_live_raw, ~.x$result) %>% 
+df_live <- map(df_live_raw, ~.x$result %>% 
+                 transmute(timestamp = as.POSIXct(as.numeric(timestamp), origin = "1970-01-01"),
+                           date = as.Date(timestamp),
+                           ticker = code,
+                           opening_price = as.numeric(open),
+                           opening_adjusted_price = opening_price,
+                           highest_price = as.numeric(high),
+                           highest_adjusted_price = highest_price,
+                           lowest_price = as.numeric(low),
+                           lowest_adjusted_price = lowest_price,
+                           closing_price = as.numeric(close),
+                           closing_adjusted_price = as.numeric(close),
+                           adjusted_dividends_price = as.numeric(close),
+                           trading_volume = as.numeric(volume),
+                           trading_volume_adjusted = trading_volume,
+                           turnover = trading_volume * closing_price)) %>% 
   bind_rows(.id = "id") %>% 
-  transmute(timestamp = as.POSIXct(timestamp %>% parse_integer(), origin = "1970-01-01"),
-            date = as.Date(timestamp),
-            ticker = ticker,
-            opening_price = parse_double(open),
-            opening_adjusted_price = opening_price,
-            highest_price = parse_double(high),
-            highest_adjusted_price = highest_price,
-            lowest_price = parse_double(low),
-            lowest_adjusted_price = lowest_price,
-            closing_price = parse_double(close),
-            closing_adjusted_price = parse_double(close),
-            adjusted_dividends_price = parse_double(close),
-            trading_volume = parse_double(volume),
-            trading_volume_adjusted = trading_volume,
-            turnover = trading_volume * closing_price) %>% 
   filter(!is.na(opening_price)) %>% 
   anti_join(df_daily, by = c("date", "ticker"))
 
