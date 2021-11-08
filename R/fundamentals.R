@@ -214,7 +214,7 @@ balance_sheet <- map(df_raw, proc_balance_sheet_history) %>%
   select(ticker, date, filing_date, currency_symbol, everything()) %>% 
   mutate(date = ymd(date),
          filing_date = ymd(filing_date)) %>% 
-  mutate_at(vars(5:61), as.numeric)
+  mutate_at(vars(5:62), as.numeric)
 
 income_statement <- map(df_raw, proc_income_statement_history) %>% 
   bind_rows(.id = "ticker") %>% 
